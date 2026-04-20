@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(npx jest *)",
+      "Bash(gh auth *)",
+      "Bash(gh repo *)",
+      "Bash(git config *)",
+      "Bash(node -e \"const Parser = require\\('tree-sitter'\\); const TS = require\\('tree-sitter-typescript'\\); const p = new Parser\\(\\); p.setLanguage\\(TS.typescript\\); const t = p.parse\\('export function foo\\(x: string\\): void {}'\\); console.log\\(t.rootNode.children[0].type\\);\")",
+      "Bash(node -e ' *)",
+      "Bash(where gh *)",
+      "Bash(where git *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}

@@ -1,0 +1,170 @@
+\documentclass[letterpaper,10pt]{article}
+\usepackage{latexsym}
+\usepackage{geometry}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{marvosym}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{verbatim}
+\usepackage{enumitem}
+\usepackage[colorlinks=true,linkcolor=black,urlcolor=black]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\input{glyphtounicode}
+\usepackage[sfdefault]{roboto}
+
+\hypersetup{pdfborder=0 0 0}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\geometry{top=0.45in, bottom=0.45in, left=0.6in, right=0.6in}
+
+\urlstyle{same}
+\raggedbottom
+\raggedright
+\setlength{\tabcolsep}{0in}
+\setlist[itemize]{noitemsep, topsep=2pt}
+
+\titleformat{\section}
+{\vspace{-2pt}\scshape\raggedright\large\bfseries}
+{}{0em}{}[\color{black}\titlerule \vspace{-6pt}]
+
+\pdfgentounicode=1
+
+\newcommand{\resumeItem}[1]{\item \small{#1}}
+
+\newcommand{\resumeSubheading}[4]{
+\item
+\textbf{#1} \hfill \textbf{\small #2} \\
+\textit{\small #3} \hfill \textit{\small #4}
+\vspace{-4pt}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+\item
+\small #1 \hfill \textbf{\small #2}
+\vspace{-4pt}
+}
+
+\renewcommand\labelitemi{$\vcenter{\hbox{\tiny$\bullet$}}$}
+
+\begin{document}
+
+\begin{center}
+{\Huge \textbf{Pratham Modi}} \\
+\vspace{3pt}
+{\large Software Development Engineer} \\
+\vspace{6pt}
+\small
+Phone: 9033393729 $|$
+Email: \href{mailto:prathammodi001@gmail.com}{prathammodi001@gmail.com} $|$
+LinkedIn: \href{https://www.linkedin.com/in/prathammodii001/}{linkedin.com/in/prathammodii001} $|$
+GitHub: \href{https://github.com/prathammodi001}{github.com/prathammodi001}
+\end{center}
+
+\vspace{-8pt}
+\section{Professional Summary}
+\begin{itemize}[leftmargin=*]
+\item Software Development Engineer specializing in microservices architecture, cloud-native systems, and AI-driven platforms. Architected distributed systems serving 2M+ users with 99.9\% uptime while lowering infrastructure costs by 60\%. Delivered 70\% database performance gains, secure immutable backup systems, and multi-agent AI solutions with 95\% deployment success rates. Strong cross-functional collaboration skills with a focus on scalable, production-grade engineering.
+\end{itemize}
+
+\vspace{-6pt}
+\section{Professional Experience}
+\begin{itemize}[leftmargin=0in, label={}]
+\resumeSubheading
+{C3iHub, IIT Kanpur}{Jul 2025 -- Present}
+{Software Development Engineer}{Kanpur, India}
+\begin{itemize}
+\resumeItem{Architected national-scale LMS platform serving 2M+ users using Express.js microservices, MongoDB, Redis, and Socket.IO, maintaining 99.9\% uptime while handling 10,000+ concurrent connections}
+\resumeItem{Formulated two-tier immutable backup infrastructure using AWS S3 Object Lock (COMPLIANCE mode) and Glacier Instant Retrieval, preventing ransomware risks while lowering storage costs by 60\%}
+\resumeItem{Executed OpenTelemetry tracing across 15+ microservices with Prometheus metrics and Grafana dashboards, reducing mean time to resolution by 85\%}
+\resumeItem{Optimized PostgreSQL performance through indexing, schema normalization, sharding, and Redis caching, cutting query response time from 450ms to 135ms (70\% improvement)}
+\resumeItem{Developed event-driven notification system using BullMQ and Redis Pub/Sub, processing 500K+ daily notifications with 99.5\% delivery rate}
+\resumeItem{Enforced disaster recovery workflows with hourly MongoDB dumps and Redis snapshots to AWS S3, achieving sub-15-minute Recovery Time Objective (RTO)}
+\end{itemize}
+
+\resumeSubheading
+{Playpower Labs}{Nov 2024 -- Jun 2025}
+{Software Development Engineer}{Remote}
+\begin{itemize}
+\resumeItem{Engineered scalable LMS using FastAPI, Node.js, and Next.js microservices, improving performance by 40\% and decreasing page load time from 3.2s to 1.9s}
+\resumeItem{Applied ChromaDB vector database for semantic search across 100K+ documents, delivering 95\% contextual accuracy and enabling AI-driven recommendations}
+\resumeItem{Created intelligent document ingestion pipeline for PDFs and web content with optimized chunking and embeddings, processing 10,000+ documents monthly}
+\resumeItem{Delivered real-time tutoring platform using WebSocket communication supporting 500+ simultaneous sessions with sub-50ms latency}
+\resumeItem{Configured AWS CI/CD infrastructure with blue-green deployment strategy, achieving 99.9\% uptime and shortening release cycles by 65\%}
+\end{itemize}
+\end{itemize}
+
+\vspace{-6pt}
+\section{Key Projects}
+\begin{itemize}[leftmargin=0in, label={}]
+
+\resumeProjectHeading
+{\textbf{DeployMind — GitOps Deployment Platform}}{Personal Project}
+\begin{itemize}
+\resumeItem{Built a production-grade GitOps platform to automate and de-risk application deployments from GitHub to EC2 and Kubernetes (EKS/GKE), eliminating manual releases through HMAC-verified webhooks and CI/CD orchestration}
+\resumeItem{Architected reliable deployment pipeline using Redis-backed FIFO queues (BRPOPLPUSH), distributed locking (SET NX PX + Lua atomic release), and sequential Security/Build/Deploy agents to prevent race conditions and ensure serialized multi-environment deployments}
+\resumeItem{Executed zero-downtime Rolling, Canary (10\%$\rightarrow$50\%$\rightarrow$100\% traffic shifting with error-rate auto-rollback), and Blue-Green strategies with health-check driven rollback and concurrent environment isolation}
+\resumeItem{Developed automated Docker build system (multi-stage builds, non-root hardening, distroless images) and Kubernetes manifest generation with readiness/liveness probes, HPA, PDB, topology spread constraints, Trivy security gating, and 200+ unit/integration tests enforcing Clean Architecture}
+\end{itemize}
+
+\resumeProjectHeading
+{\textbf{Autonomous Invoice Processing Platform — Event-Driven Distributed System}}{Hackathon Winner}
+\begin{itemize}
+\resumeItem{Developed a scalable financial document processing platform to automate ingestion and validation of invoices from Gmail API, WhatsApp Business API, and Google Drive, reducing manual accounting workflows}
+\resumeItem{Designed event-driven microservices architecture using Kafka/Redis Streams with consumer groups, backpressure control, and horizontally scalable worker pools for high-throughput, fault-tolerant processing}
+\resumeItem{Ensured exactly-once invoice handling via idempotent processing, content hashing, transactional database writes, and concurrency-safe duplicate detection under parallel uploads}
+\resumeItem{Applied resilient pipeline with schema validation, retry/backoff policies, dead-letter queues (DLQ), RBAC-based human review workflow, audit logging, structured logging, and metrics-driven observability (throughput, latency, error-rate monitoring)}
+\end{itemize}
+
+\vspace{5pt}
+
+\resumeProjectHeading
+{\textbf{ContextBridge — Live Codebase State Server for AI-Assisted Development}}{Personal Project}
+\begin{itemize}
+\resumeItem{Designed a coordination layer for AI-assisted development that prevents integration failures caused by assistants generating code against stale repository context during parallel development}
+\resumeItem{Enforced a WebSocket-based live codebase state server that synchronizes developers’ working-tree changes and maintains a real-time repository view across the team}
+\resumeItem{Implemented an AST-driven dependency graph using Tree-sitter to track cross-file entities and detect contract-level changes such as function signature, type, and export modifications}
+\resumeItem{Exposed REST and WebSocket APIs enabling AI assistants and developer tools to query the current live state of functions and interfaces before generating code, reducing semantic conflicts before commit}
+\end{itemize}
+
+\end{itemize}
+
+\vspace{-6pt}
+\section{Technical Skills}
+\begin{itemize}[leftmargin=*]
+\item \textbf{Languages:} Python, JavaScript, TypeScript, Java, C++, SQL \\
+\textbf{Frameworks:} Node.js, FastAPI, Express.js, React, Next.js \\
+\textbf{AI/ML:} RAG, Vector Databases, ChromaDB, NLP, Multi-Agent Systems, Prompt Engineering \\
+\textbf{Cloud \& DevOps:} AWS (S3, EC2, Lambda, IAM), Docker, Kubernetes, CI/CD, GitHub Actions, Jenkins, Ansible \\
+\textbf{Databases:} PostgreSQL, MongoDB, Redis, DynamoDB, Supabase \\
+\textbf{Message Queues:} BullMQ, Redis Queue, Event-Driven Architecture \\
+\textbf{Observability:} OpenTelemetry, Prometheus, Grafana, LGTM Stack, Distributed Tracing, Logging \\
+\textbf{Security:} Trivy, Authentication, Authorization, Secret Management \\
+\textbf{Testing:} Jest, PyTest, Unit Testing, Integration Testing \\
+\textbf{Soft Skills:} Leadership, Communication, Teamwork, Cross-Functional Collaboration
+\end{itemize}
+
+\vspace{-6pt}
+\section{Education}
+\begin{itemize}[leftmargin=0in, label={}]
+\resumeSubheading
+{Pandit Deendayal Energy University}{Aug 2021 -- Jun 2025}
+{Bachelor of Technology in Computer Science and Engineering}{Gandhinagar, Gujarat, India \quad GPA: 9.20/10}
+\end{itemize}
+
+\vspace{-6pt}
+\section{Achievements}
+\begin{itemize}[leftmargin=0in, label={}]
+\resumeProjectHeading
+{\textbf{Publications and Awards}}{}
+\begin{itemize}
+\resumeItem{Published IEEE research paper titled "Ciphering the Modern World: Analysis of DES, AES, RSA, and DHKE"}
+\resumeItem{Winner - Decentralized AI Buildathon 2024}
+\resumeItem{Finalist - Smart India Hackathon 2023}
+\end{itemize}
+\end{itemize}
+
+\end{document}

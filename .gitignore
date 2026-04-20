@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.js.map
+coverage/
+packages/demo/workspace-devA/
+packages/demo/workspace-devB/
+.claude/settings.local.json

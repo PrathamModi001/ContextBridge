@@ -1,0 +1,17 @@
+{
+  "name": "contextbridge",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "jest --config jest.e2e.config.js",
+    "demo:seed": "ts-node packages/demo/src/seed.ts",
+    "demo:start": "npm run demo:seed && concurrently -n server,client-a,client-b,dashboard \"npm run dev -w packages/server\" \"npm run dev -w packages/client -- --dev=devA --workspace=./packages/demo/workspace-devA\" \"npm run dev -w packages/client -- --dev=devB --workspace=./packages/demo/workspace-devB\" \"npm run dev -w packages/dashboard\"",
+    "agent": "ts-node packages/agent/src/index.ts"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}
