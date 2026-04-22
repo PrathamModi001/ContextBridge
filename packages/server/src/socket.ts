@@ -1,6 +1,9 @@
 import { Server as HttpServer } from 'http'
 import { Server } from 'socket.io'
 import { createModuleLogger } from './logger/logger'
+import { getRedisClient } from './config/redis'
+import * as entityService from './services/entity/entity.service'
+import { EntityDiffPayload } from './types'
 
 const log = createModuleLogger('socket')
 
@@ -8,6 +11,17 @@ let io: Server
 
 export function getIo(): Server {
   return io
+}
+
+export async function handleEntityDiffEvent(
+  devId: string,
+  payload: EntityDiffPayload[],
+): Promise<void> {
+  await entityService.handleDiff(devId, payload)
+}
+
+export async function handleHeartbeatEvent(devId: string): Promise<void> {
+  await getRedisClient().set(`client:${devId}:heartbeat`, '1', 'EX', 30)
 }
 
 export function initSocket(httpServer: HttpServer): Server {
@@ -31,11 +45,61 @@ export function initSocket(httpServer: HttpServer): Server {
       log.info(`[socket] ${devId} joined room:${room}`)
     })
 
+    socket.on('entity:diff', async (payload: EntityDiffPayload[]) => {
+      try {
+        await handleEntityDiffEvent(devId, payload)
+      } catch (err) {
+        log.error({ err }, 'entity:diff handler error')
+      }
+    })
+
+    socket.on('heartbeat', async ({ devId: hbDevId }: { devId?: string }) => {
+      try {
+        await handleHeartbeatEvent(hbDevId ?? devId)
+      } catch (err) {
+        log.error({ err }, 'heartbeat handler error')
+      }
+    })
+
     socket.on('disconnect', () => {
       log.warn(`[socket] ${devId} disconnected`)
       io.emit('client:disconnected', { devId })
     })
   })
 
+  subscribeToKeyExpiry(io)
+
   return io
+}
+
+function subscribeToKeyExpiry(server: Server): void {
+  try {
+    const redis = getRedisClient()
+    const subscriber = redis.duplicate()
+
+    subscriber.on('message', async (_channel: string, key: string) => {
+      if (!key.startsWith('client:') || !key.endsWith(':heartbeat')) return
+
+      const devId = key.split(':')[1]
+      try {
+        const entityNames = await redis.smembers(`client:${devId}:entities`)
+        for (const name of entityNames) {
+          const owner = await redis.hget(`entity:${name}`, 'devId')
+          if (owner === devId) await redis.del(`entity:${name}`)
+          await redis.srem(`entity:${name}:clients`, devId)
+        }
+        await redis.del(`client:${devId}:entities`)
+        server.emit('client:disconnected', { devId })
+        log.info(`[cleanup] ${devId} expired — ${entityNames.length} entities cleared`)
+      } catch (err) {
+        log.error({ err }, 'keyspace expiry cleanup error')
+      }
+    })
+
+    subscriber.subscribe('__keyevent@0__:expired').catch((err: Error) => {
+      log.error({ err }, 'keyspace subscription error')
+    })
+  } catch (err) {
+    log.error({ err }, 'failed to set up keyspace subscription')
+  }
 }
