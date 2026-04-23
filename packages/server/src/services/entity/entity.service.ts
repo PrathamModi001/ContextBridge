@@ -28,8 +28,10 @@ export async function handleDiff(devId: string, entities: EntityDiffPayload[]): 
 
 function writeEntityChangeAsync(devId: string, entity: EntityDiffPayload): void {
   db.query(
-    `INSERT INTO entity_changes (entity_name, dev_id, old_signature, new_signature, severity)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [entity.name, devId, entity.oldSig, entity.newSig, 'info'],
+    `INSERT INTO entity_changes
+       (entity_name, dev_id, old_signature, new_signature, severity, kind, body, file, line)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [entity.name, devId, entity.oldSig, entity.newSig, 'info',
+     entity.kind, entity.body, entity.file, entity.line],
   ).catch((err: Error) => log.error({ err }, 'failed to write entity change'))
 }

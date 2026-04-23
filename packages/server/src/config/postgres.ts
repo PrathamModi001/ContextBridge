@@ -49,6 +49,11 @@ const MIGRATION = `
     detected_at  TIMESTAMPTZ DEFAULT now(),
     resolved     BOOLEAN DEFAULT false
   );
+
+  ALTER TABLE entity_changes ADD COLUMN IF NOT EXISTS kind TEXT;
+  ALTER TABLE entity_changes ADD COLUMN IF NOT EXISTS body TEXT;
+  ALTER TABLE entity_changes ADD COLUMN IF NOT EXISTS file TEXT;
+  ALTER TABLE entity_changes ADD COLUMN IF NOT EXISTS line INT;
 `
 
 export async function connectPostgres(): Promise<void> {

@@ -156,4 +156,35 @@ describe('handleDiff', () => {
     const args = (db.query as jest.Mock).mock.calls[0][1]
     expect(args[2]).toBeNull()
   })
+
+  it('db.query receives severity as info', async () => {
+    await handleDiff('devA', [makePayload()])
+    const args = (db.query as jest.Mock).mock.calls[0][1]
+    expect(args[4]).toBe('info')
+  })
+
+  it('db.query receives entity kind', async () => {
+    await handleDiff('devA', [makePayload({ kind: 'interface' })])
+    const args = (db.query as jest.Mock).mock.calls[0][1]
+    expect(args[5]).toBe('interface')
+  })
+
+  it('db.query receives entity body', async () => {
+    const body = 'function foo() { return 1 }'
+    await handleDiff('devA', [makePayload({ body })])
+    const args = (db.query as jest.Mock).mock.calls[0][1]
+    expect(args[6]).toBe(body)
+  })
+
+  it('db.query receives entity file', async () => {
+    await handleDiff('devA', [makePayload({ file: 'src/auth.ts' })])
+    const args = (db.query as jest.Mock).mock.calls[0][1]
+    expect(args[7]).toBe('src/auth.ts')
+  })
+
+  it('db.query receives entity line as number', async () => {
+    await handleDiff('devA', [makePayload({ line: 42 })])
+    const args = (db.query as jest.Mock).mock.calls[0][1]
+    expect(args[8]).toBe(42)
+  })
 })
