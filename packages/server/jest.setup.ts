@@ -1,1 +1,7 @@
 process.env.LOG_LEVEL = 'silent'
+process.env.REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379'
+process.env.POSTGRES_HOST = process.env.POSTGRES_HOST ?? 'localhost'
+process.env.POSTGRES_PORT = process.env.POSTGRES_PORT ?? '5432'
+process.env.POSTGRES_DB = process.env.POSTGRES_DB ?? 'contextbridge'
+process.env.POSTGRES_USER = process.env.POSTGRES_USER ?? 'contextbridge'
+process.env.POSTGRES_PASSWORD = process.env.POSTGRES_PASSWORD ?? 'contextbridge'

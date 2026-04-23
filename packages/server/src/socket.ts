@@ -3,7 +3,9 @@ import { Server } from 'socket.io'
 import { createModuleLogger } from './logger/logger'
 import { getRedisClient } from './config/redis'
 import * as entityService from './services/entity/entity.service'
-import { EntityDiffPayload } from './types'
+import { EntityDiffPayload, ConflictPayload } from './types'
+import { detectConflict, storeConflict } from './services/conflict/conflict.detector'
+import { getEntityClients } from './services/graph/graph.service'
 
 const log = createModuleLogger('socket')
 
@@ -16,8 +18,17 @@ export function getIo(): Server {
 export async function handleEntityDiffEvent(
   devId: string,
   payload: EntityDiffPayload[],
-): Promise<void> {
+): Promise<ConflictPayload[]> {
+  const conflicts: ConflictPayload[] = []
+  for (const entity of payload) {
+    const conflict = await detectConflict(entity.name, devId, entity.newSig)
+    if (conflict) {
+      conflicts.push(conflict)
+      await storeConflict(conflict)
+    }
+  }
   await entityService.handleDiff(devId, payload)
+  return conflicts
 }
 
 export async function handleHeartbeatEvent(devId: string): Promise<void> {
@@ -47,15 +58,22 @@ export function initSocket(httpServer: HttpServer): Server {
 
     socket.on('entity:diff', async (payload: EntityDiffPayload[]) => {
       try {
-        await handleEntityDiffEvent(devId, payload)
+        const conflicts = await handleEntityDiffEvent(devId, payload)
+        for (const conflict of conflicts) {
+          const clients = await getEntityClients(conflict.entityName)
+          const targets = new Set([...clients, conflict.devAId, devId])
+          for (const clientId of targets) {
+            io.to(`room:${clientId}`).emit('entity:conflict', conflict)
+          }
+        }
       } catch (err) {
         log.error({ err }, 'entity:diff handler error')
       }
     })
 
-    socket.on('heartbeat', async ({ devId: hbDevId }: { devId?: string }) => {
+    socket.on('heartbeat', async () => {
       try {
-        await handleHeartbeatEvent(hbDevId ?? devId)
+        await handleHeartbeatEvent(devId)
       } catch (err) {
         log.error({ err }, 'heartbeat handler error')
       }
@@ -80,7 +98,8 @@ function subscribeToKeyExpiry(server: Server): void {
     subscriber.on('message', async (_channel: string, key: string) => {
       if (!key.startsWith('client:') || !key.endsWith(':heartbeat')) return
 
-      const devId = key.split(':')[1]
+      const parts = key.split(':')
+      const devId = parts.slice(1, -1).join(':')
       try {
         const entityNames = await redis.smembers(`client:${devId}:entities`)
         for (const name of entityNames) {

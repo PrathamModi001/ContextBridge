@@ -1,0 +1,11 @@
+node_modules
+packages/*/node_modules
+packages/*/dist
+packages/*/__tests__
+*.test.ts
+.env
+.env.*
+docs
+*.md
+.git
+.claude

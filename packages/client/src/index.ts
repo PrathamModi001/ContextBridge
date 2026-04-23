@@ -36,5 +36,5 @@ async function shutdown() {
   closeSocket()
 }
 
-process.on('SIGINT', () => { shutdown().then(() => process.exit(0)) })
-process.on('SIGTERM', () => { shutdown().then(() => process.exit(0)) })
+process.on('SIGINT', () => { shutdown().then(() => process.exit(0)).catch(() => process.exit(1)) })
+process.on('SIGTERM', () => { shutdown().then(() => process.exit(0)).catch(() => process.exit(1)) })
