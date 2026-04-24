@@ -59,12 +59,26 @@ export function initSocket(httpServer: HttpServer): Server {
     socket.on('entity:diff', async (payload: EntityDiffPayload[]) => {
       try {
         const conflicts = await handleEntityDiffEvent(devId, payload)
+
+        for (const entity of payload) {
+          io.to('room:dashboard').emit('entity:updated', {
+            name: entity.name,
+            devId,
+            signature: entity.newSig,
+            kind: entity.kind,
+            file: entity.file,
+            severity: 'info',
+            locked: true,
+          })
+        }
+
         for (const conflict of conflicts) {
           const clients = await getEntityClients(conflict.entityName)
           const targets = new Set([...clients, conflict.devAId, devId])
           for (const clientId of targets) {
             io.to(`room:${clientId}`).emit('entity:conflict', conflict)
           }
+          io.to('room:dashboard').emit('conflict:detected', conflict)
         }
       } catch (err) {
         log.error({ err }, 'entity:diff handler error')

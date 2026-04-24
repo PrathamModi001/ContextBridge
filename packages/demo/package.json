@@ -1,0 +1,13 @@
+{
+  "name": "@contextbridge/demo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "seed": "ts-node src/seed.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}
