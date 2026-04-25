@@ -1,9 +1,9 @@
 import type { ConflictEvent, Severity } from '../types'
 
-const SEV_CLASSES: Record<Severity, { badge: string; border: string; badgeText: string }> = {
-  info:     { badge: 'bg-cb-green/10 text-cb-green',    border: 'border-l-cb-green',  badgeText: 'INFO' },
-  warning:  { badge: 'bg-cb-amber/10 text-cb-amber',    border: 'border-l-cb-amber',  badgeText: 'WARNING' },
-  critical: { badge: 'bg-cb-red/10 text-cb-red',        border: 'border-l-cb-red',    badgeText: 'CRITICAL' },
+const SEV: Record<Severity, { color: string; label: string; bg: string }> = {
+  info:     { color: 'var(--color-cb-green)', bg: 'var(--color-cb-green-dim)', label: 'Info' },
+  warning:  { color: 'var(--color-cb-amber)', bg: 'var(--color-cb-amber-dim)', label: 'Warning' },
+  critical: { color: 'var(--color-cb-red)',   bg: 'var(--color-cb-red-dim)',   label: 'Critical' },
 }
 
 interface Props {
@@ -12,78 +12,171 @@ interface Props {
 
 export function ConflictFeed({ conflicts }: Props) {
   return (
-    <aside className="w-80 border-l border-cb-border bg-surface flex flex-col overflow-hidden shrink-0">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-cb-border">
-        <span className="font-code text-[10px] tracking-widest text-cb-dim">CONFLICT FEED</span>
+    <aside
+      className="flex flex-col overflow-hidden shrink-0"
+      style={{
+        width: 304,
+        borderLeft: '1px solid var(--color-cb-border)',
+        background: 'var(--color-surface)',
+      }}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center justify-between px-4 shrink-0"
+        style={{ height: 44, borderBottom: '1px solid var(--color-cb-border)' }}
+      >
+        <span className="font-ui" style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-cb-text)' }}>
+          Conflict log
+        </span>
         {conflicts.length > 0 && (
-          <span className="ml-auto font-code text-[10px] px-1.5 py-px rounded-full bg-cb-red/10 text-cb-red">
+          <span
+            className="font-mono"
+            style={{
+              fontSize: 10,
+              padding: '2px 7px',
+              borderRadius: 20,
+              background: 'var(--color-cb-red-dim)',
+              color: 'var(--color-cb-red)',
+              border: '1px solid oklch(59% 0.22 25 / 0.2)',
+            }}
+          >
             {conflicts.length}
           </span>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto py-1.5">
+      {/* Events */}
+      <div className="flex-1 overflow-y-auto">
         {conflicts.length === 0 ? (
-          <p className="px-5 py-10 text-center font-code text-[11px] text-cb-dim leading-loose">
-            No conflicts detected
-          </p>
+          <EmptyState />
         ) : (
-          conflicts.map(c => <ConflictCard key={c.id} conflict={c} />)
+          <div className="py-2">
+            {conflicts.map(c => <ConflictRow key={c.id} conflict={c} />)}
+          </div>
         )}
       </div>
     </aside>
   )
 }
 
-function ConflictCard({ conflict }: { conflict: ConflictEvent }) {
-  const s = SEV_CLASSES[conflict.severity]
+function ConflictRow({ conflict }: { conflict: ConflictEvent }) {
+  const sev = SEV[conflict.severity]
   const time = new Date(conflict.timestamp).toLocaleTimeString([], {
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   })
+  const isCritical = conflict.severity === 'critical'
 
   return (
-    <div className={`mx-2 my-1 rounded-lg bg-raised border border-cb-border border-l-[3px] ${s.border} overflow-hidden ${conflict.severity === 'critical' ? 'animate-conflict-glow' : 'animate-fade-slide'}`}>
-      {/* Header */}
-      <div className="flex items-center gap-2 px-2.5 pt-2 pb-1.5">
-        <span className={`font-code text-[9px] px-1.5 py-0.5 rounded font-medium tracking-wider ${s.badge}`}>
-          {s.badgeText}
+    <div
+      className={`mx-2 my-1.5 rounded-lg overflow-hidden ${isCritical ? 'animate-conflict' : 'animate-slide-in'}`}
+      style={{
+        background: 'var(--color-raised)',
+        border: `1px solid var(--color-cb-border)`,
+        borderLeft: `3px solid ${sev.color}`,
+      }}
+    >
+      {/* Row header */}
+      <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
+        <span
+          className="font-ui shrink-0"
+          style={{
+            fontSize: 10,
+            fontWeight: 600,
+            padding: '1px 6px',
+            borderRadius: 4,
+            background: sev.bg,
+            color: sev.color,
+          }}
+        >
+          {sev.label}
         </span>
-        <span className="font-code text-[11px] text-cb-text font-medium flex-1 truncate">
+        <span
+          className="font-mono flex-1 truncate"
+          style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-cb-text)' }}
+        >
           {conflict.entityName}
         </span>
-        <span className="font-code text-[9px] text-cb-dim">{time}</span>
+        <span className="font-mono shrink-0" style={{ fontSize: 10, color: 'var(--color-cb-muted)' }}>
+          {time}
+        </span>
       </div>
 
-      {/* Devs */}
-      <div className="flex items-center gap-1.5 px-2.5 pb-1.5 font-code text-[10px]">
-        <span className="text-cb-green">{conflict.devAId}</span>
-        <span className="text-cb-dim">↔</span>
-        <span className="text-cb-red">{conflict.devBId}</span>
+      {/* Devs + impact */}
+      <div className="flex items-center gap-1 px-3 pb-2">
+        <span className="font-mono" style={{ fontSize: 11, color: 'var(--color-cb-green)' }}>
+          {conflict.devAId}
+        </span>
+        <span className="font-ui" style={{ fontSize: 11, color: 'var(--color-cb-dim)', marginInline: 2 }}>↔</span>
+        <span className="font-mono" style={{ fontSize: 11, color: 'var(--color-cb-red)' }}>
+          {conflict.devBId}
+        </span>
         {conflict.impactCount > 0 && (
           <>
             <span className="flex-1" />
-            <span className="px-1.5 py-px rounded bg-cb-amber/10 text-cb-amber text-[9px]">
+            <span
+              className="font-ui"
+              style={{
+                fontSize: 10,
+                padding: '1px 6px',
+                borderRadius: 4,
+                background: 'var(--color-cb-amber-dim)',
+                color: 'var(--color-cb-amber)',
+              }}
+            >
               {conflict.impactCount} dep{conflict.impactCount !== 1 ? 's' : ''}
             </span>
           </>
         )}
       </div>
 
-      {/* Sig diff */}
+      {/* Signature diff */}
       {(conflict.oldSig || conflict.newSig) && (
-        <div className="mx-2.5 mb-2 rounded bg-base border border-cb-border overflow-hidden">
+        <div
+          className="mx-3 mb-2.5 rounded overflow-hidden"
+          style={{
+            background: 'var(--color-base)',
+            border: '1px solid var(--color-cb-border)',
+          }}
+        >
           {conflict.oldSig && (
-            <div className="px-2 py-1 font-code text-[9px] text-[#ff6b6b] border-b border-cb-border break-all leading-relaxed">
-              − {conflict.oldSig}
+            <div
+              className="font-mono break-all leading-relaxed"
+              style={{
+                fontSize: 10,
+                padding: '5px 8px',
+                color: '#ff8080',
+                borderBottom: '1px solid var(--color-cb-border)',
+              }}
+            >
+              <span style={{ opacity: 0.5, marginRight: 4 }}>−</span>{conflict.oldSig}
             </div>
           )}
           {conflict.newSig && (
-            <div className="px-2 py-1 font-code text-[9px] text-[#6bffb8] break-all leading-relaxed">
-              + {conflict.newSig}
+            <div
+              className="font-mono break-all leading-relaxed"
+              style={{ fontSize: 10, padding: '5px 8px', color: '#6ef0a8' }}
+            >
+              <span style={{ opacity: 0.5, marginRight: 4 }}>+</span>{conflict.newSig}
             </div>
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+function EmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center h-48 gap-2.5">
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none" opacity="0.15">
+        <path d="M16 3L3 28h26L16 3z" stroke="var(--color-cb-text)" strokeWidth="1.5" strokeLinejoin="round" />
+        <line x1="16" y1="13" x2="16" y2="20" stroke="var(--color-cb-text)" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="16" cy="24" r="1" fill="var(--color-cb-text)" />
+      </svg>
+      <div className="text-center">
+        <p className="font-ui" style={{ fontSize: 12, color: 'var(--color-cb-muted)' }}>No conflicts detected</p>
+        <p className="font-ui" style={{ fontSize: 11, color: 'var(--color-cb-dim)', marginTop: 3 }}>System nominal</p>
+      </div>
     </div>
   )
 }

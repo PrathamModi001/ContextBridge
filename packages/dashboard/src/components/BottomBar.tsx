@@ -6,22 +6,42 @@ interface Props {
 
 export function BottomBar({ connected, entityCount, conflictCount }: Props) {
   return (
-    <footer className="h-9 border-t border-cb-border bg-surface flex items-center px-4 gap-5 shrink-0">
-      <Item label="WS" value={connected ? 'connected' : 'disconnected'} color={connected ? 'text-cb-green' : 'text-cb-red'} />
-      <div className="w-px h-4 bg-cb-border" />
-      <Item label="ENTITIES" value={String(entityCount)} />
-      <Item label="CONFLICTS" value={String(conflictCount)} color={conflictCount > 0 ? 'text-cb-red' : undefined} />
+    <footer
+      className="shrink-0 flex items-center gap-5 px-4"
+      style={{
+        height: 34,
+        borderTop: '1px solid var(--color-cb-border)',
+        background: 'var(--color-surface)',
+      }}
+    >
+      <StatusDot label="WebSocket" active={connected} />
+      <div style={{ width: 1, height: 14, background: 'var(--color-cb-border)' }} />
+      <span className="font-mono" style={{ fontSize: 10, color: 'var(--color-cb-dim)' }}>
+        {entityCount} entities · {conflictCount} conflict{conflictCount !== 1 ? 's' : ''}
+      </span>
       <div className="flex-1" />
-      <span className="font-code text-[10px] text-cb-dim">ContextBridge v1.0.0</span>
+      <span className="font-mono" style={{ fontSize: 10, color: 'var(--color-cb-dim)' }}>
+        ContextBridge v1.0.0
+      </span>
     </footer>
   )
 }
 
-function Item({ label, value, color }: { label: string; value: string; color?: string }) {
+function StatusDot({ label, active }: { label: string; active: boolean }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="font-code text-[9px] text-cb-dim tracking-widest">{label}</span>
-      <span className={`font-code text-[10px] transition-colors ${color ?? 'text-cb-muted'}`}>{value}</span>
+      <span
+        style={{
+          display: 'block',
+          width: 5,
+          height: 5,
+          borderRadius: '50%',
+          background: active ? 'var(--color-cb-green)' : 'var(--color-cb-dim)',
+        }}
+      />
+      <span className="font-ui" style={{ fontSize: 10, color: 'var(--color-cb-muted)' }}>
+        {label}
+      </span>
     </div>
   )
 }

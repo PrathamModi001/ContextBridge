@@ -1,9 +1,50 @@
+import Redis from 'ioredis'
 import { getRedisClient } from '../../config/redis'
 import { db } from '../../config/postgres'
 import { EntityDiffPayload } from '../../types'
 import { createModuleLogger } from '../../logger/logger'
+import { updateDependents, updateClientIndex, updateEntityCalls } from '../graph/graph.service'
 
 const log = createModuleLogger('entity-service')
+
+const BUILTIN_IDENTIFIERS = new Set([
+  'if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'instanceof', 'in', 'of',
+  'new', 'delete', 'throw', 'await', 'async', 'function', 'class', 'const', 'let', 'var',
+  'console', 'Math', 'Object', 'Array', 'String', 'Number', 'Boolean', 'Promise', 'Error',
+  'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'parseInt', 'parseFloat',
+  'isNaN', 'isFinite', 'JSON', 'Date', 'Map', 'Set', 'WeakMap', 'WeakSet', 'Symbol',
+  'describe', 'it', 'test', 'expect', 'beforeAll', 'afterAll', 'beforeEach', 'afterEach',
+  'require', 'exports', 'module', 'process', 'Buffer', 'global', 'undefined', 'null',
+  'super', 'this', 'void', 'try', 'then', 'catch', 'finally', 'push', 'pop', 'map',
+  'filter', 'reduce', 'find', 'forEach', 'slice', 'splice', 'join', 'split', 'includes',
+  'log', 'error', 'warn', 'info', 'debug',
+])
+
+/** Extract likely entity call references from a function body. */
+function extractCalls(body: string): string[] {
+  const callPattern = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(/g
+  const candidates = new Set<string>()
+  let match: RegExpExecArray | null
+  while ((match = callPattern.exec(body)) !== null) {
+    const name = match[1]
+    if (!BUILTIN_IDENTIFIERS.has(name) && name.length > 1) {
+      candidates.add(name)
+    }
+  }
+  return [...candidates]
+}
+
+/** Filter candidate names to only those with an existing entity:X hash in Redis. */
+async function knownEntityCalls(redis: Redis, body: string): Promise<string[]> {
+  const candidates = extractCalls(body)
+  if (candidates.length === 0) return []
+  const known: string[] = []
+  for (const name of candidates) {
+    const exists = await redis.exists(`entity:${name}`)
+    if (exists) known.push(name)
+  }
+  return known
+}
 
 export async function handleDiff(devId: string, entities: EntityDiffPayload[]): Promise<void> {
   const redis = getRedisClient()
@@ -21,6 +62,14 @@ export async function handleDiff(devId: string, entities: EntityDiffPayload[]): 
 
     await redis.set(`lock:${entity.name}`, devId, 'EX', 15)
     await redis.sadd(`client:${devId}:entities`, entity.name)
+
+    /* Dependency graph wiring */
+    const calledNames = await knownEntityCalls(redis, entity.body ?? '')
+    if (calledNames.length > 0) {
+      await updateEntityCalls(entity.name, calledNames)
+      await updateDependents(entity.name, calledNames)
+      await updateClientIndex(devId, calledNames)
+    }
 
     writeEntityChangeAsync(devId, entity)
   }

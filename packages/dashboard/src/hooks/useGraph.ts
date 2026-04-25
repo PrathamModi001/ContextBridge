@@ -5,6 +5,8 @@ import type {
   EntityUpdateEvent, ConflictPayload,
 } from '../types'
 
+interface RawLink { source: string; target: string; conflict: boolean }
+
 export function useGraph(socket: Socket | null) {
   const [nodes, setNodes] = useState<GraphNode[]>([])
   const [links, setLinks] = useState<GraphLink[]>([])
@@ -44,8 +46,35 @@ export function useGraph(socket: Socket | null) {
         const entities = existing.entities.includes(data.name)
           ? existing.entities
           : [...existing.entities, data.name]
-        next.set(data.devId, { ...existing, connected: true, lastHeartbeat: Date.now(), entities, lastEntity: data.name })
+        next.set(data.devId, {
+          ...existing,
+          connected: true,
+          lastHeartbeat: Date.now(),
+          entities,
+          lastEntity: data.name,
+        })
         return next
+      })
+    }
+
+    const onGraphLinks = (incoming: RawLink[]) => {
+      setLinks(prev => {
+        const byKey = new Map<string, GraphLink>()
+        for (const l of prev) {
+          const s = typeof l.source === 'string' ? l.source : (l.source as GraphNode).id
+          const t = typeof l.target === 'string' ? l.target : (l.target as GraphNode).id
+          byKey.set(`${s}→${t}`, l)
+        }
+        for (const l of incoming) {
+          const key = `${l.source}→${l.target}`
+          const existing = byKey.get(key)
+          byKey.set(key, {
+            source: l.source,
+            target: l.target,
+            conflict: l.conflict || existing?.conflict || false,
+          })
+        }
+        return [...byKey.values()]
       })
     }
 
@@ -65,6 +94,13 @@ export function useGraph(socket: Socket | null) {
       setNodes(prev => prev.map(n =>
         n.name === data.entityName ? { ...n, severity: data.severity } : n
       ))
+      /* Mark links involving this entity as conflict */
+      setLinks(prev => prev.map(l => {
+        const s = typeof l.source === 'string' ? l.source : (l.source as GraphNode).id
+        const t = typeof l.target === 'string' ? l.target : (l.target as GraphNode).id
+        const involved = s === data.entityName || t === data.entityName
+        return involved ? { ...l, conflict: true, severity: data.severity } : l
+      }))
     }
 
     const onClientConnected = ({ devId }: { devId: string }) => {
@@ -91,15 +127,17 @@ export function useGraph(socket: Socket | null) {
       })
     }
 
-    socket.on('entity:updated', onEntityUpdated)
-    socket.on('conflict:detected', onConflictDetected)
-    socket.on('client:connected', onClientConnected)
+    socket.on('entity:updated',     onEntityUpdated)
+    socket.on('graph:links',        onGraphLinks)
+    socket.on('conflict:detected',  onConflictDetected)
+    socket.on('client:connected',   onClientConnected)
     socket.on('client:disconnected', onClientDisconnected)
 
     return () => {
-      socket.off('entity:updated', onEntityUpdated)
-      socket.off('conflict:detected', onConflictDetected)
-      socket.off('client:connected', onClientConnected)
+      socket.off('entity:updated',     onEntityUpdated)
+      socket.off('graph:links',        onGraphLinks)
+      socket.off('conflict:detected',  onConflictDetected)
+      socket.off('client:connected',   onClientConnected)
       socket.off('client:disconnected', onClientDisconnected)
     }
   }, [socket])

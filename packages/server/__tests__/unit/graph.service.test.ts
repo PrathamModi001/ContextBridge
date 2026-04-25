@@ -6,10 +6,13 @@ jest.mock('../../src/config/redis', () => ({
 
 import {
   updateDependents,
+  updateEntityCalls,
+  getEntityCalls,
   getDependents,
   getImpactCount,
   updateClientIndex,
   getEntityClients,
+  getLinksForEntities,
 } from '../../src/services/graph/graph.service'
 import { getRedisClient } from '../../src/config/redis'
 
@@ -17,6 +20,7 @@ import { getRedisClient } from '../../src/config/redis'
 
 const mockRedis = {
   sadd: jest.fn().mockResolvedValue(1),
+  del:  jest.fn().mockResolvedValue(1),
   smembers: jest.fn().mockResolvedValue([]),
 }
 
@@ -26,15 +30,15 @@ beforeEach(() => {
 })
 
 // ── updateDependents ──────────────────────────────────────────────────────────
+// updateDependents(caller, calledEntities) registers caller as a dependent
+// of each called entity (reverse index: entity:called:dependents += caller)
 
 describe('updateDependents', () => {
-  it('calls sadd with correct key', async () => {
+  it('registers entityName as dependent of each called entity', async () => {
     await updateDependents('validateUser', ['findUser', 'hashPassword'])
-    expect(mockRedis.sadd).toHaveBeenCalledWith(
-      'entity:validateUser:dependents',
-      'findUser',
-      'hashPassword',
-    )
+    expect(mockRedis.sadd).toHaveBeenCalledWith('entity:findUser:dependents', 'validateUser')
+    expect(mockRedis.sadd).toHaveBeenCalledWith('entity:hashPassword:dependents', 'validateUser')
+    expect(mockRedis.sadd).toHaveBeenCalledTimes(2)
   })
 
   it('does NOT call sadd when calledEntities is empty', async () => {
@@ -42,15 +46,79 @@ describe('updateDependents', () => {
     expect(mockRedis.sadd).not.toHaveBeenCalled()
   })
 
-  it('handles single dependent', async () => {
+  it('handles single called entity', async () => {
     await updateDependents('foo', ['bar'])
-    expect(mockRedis.sadd).toHaveBeenCalledWith('entity:foo:dependents', 'bar')
+    expect(mockRedis.sadd).toHaveBeenCalledWith('entity:bar:dependents', 'foo')
   })
 
-  it('uses entity name in Redis key', async () => {
-    await updateDependents('mySpecialFn', ['dep'])
+  it('uses called entity name in Redis key (not caller name)', async () => {
+    await updateDependents('caller', ['callee'])
     const key = mockRedis.sadd.mock.calls[0][0]
-    expect(key).toBe('entity:mySpecialFn:dependents')
+    expect(key).toBe('entity:callee:dependents')
+    expect(mockRedis.sadd.mock.calls[0][1]).toBe('caller')
+  })
+})
+
+// ── updateEntityCalls ─────────────────────────────────────────────────────────
+
+describe('updateEntityCalls', () => {
+  it('clears old calls then sets new ones', async () => {
+    await updateEntityCalls('foo', ['bar', 'baz'])
+    expect(mockRedis.del).toHaveBeenCalledWith('entity:foo:calls')
+    expect(mockRedis.sadd).toHaveBeenCalledWith('entity:foo:calls', 'bar', 'baz')
+  })
+
+  it('clears but does not sadd when calledEntities is empty', async () => {
+    await updateEntityCalls('foo', [])
+    expect(mockRedis.del).toHaveBeenCalledWith('entity:foo:calls')
+    expect(mockRedis.sadd).not.toHaveBeenCalled()
+  })
+})
+
+// ── getEntityCalls ────────────────────────────────────────────────────────────
+
+describe('getEntityCalls', () => {
+  it('calls smembers with correct key', async () => {
+    await getEntityCalls('foo')
+    expect(mockRedis.smembers).toHaveBeenCalledWith('entity:foo:calls')
+  })
+
+  it('returns array from smembers', async () => {
+    mockRedis.smembers.mockResolvedValueOnce(['bar', 'baz'])
+    const result = await getEntityCalls('foo')
+    expect(result).toEqual(['bar', 'baz'])
+  })
+})
+
+// ── getLinksForEntities ───────────────────────────────────────────────────────
+
+describe('getLinksForEntities', () => {
+  it('returns empty array when entities call nothing', async () => {
+    mockRedis.smembers.mockResolvedValue([])
+    const links = await getLinksForEntities(['foo', 'bar'])
+    expect(links).toEqual([])
+  })
+
+  it('returns source→target links from calls index', async () => {
+    mockRedis.smembers.mockImplementation(async (key: string) => {
+      if (key === 'entity:userService:calls') return ['validateUser']
+      return []
+    })
+    const links = await getLinksForEntities(['userService'])
+    expect(links).toEqual([{ source: 'userService', target: 'validateUser' }])
+  })
+
+  it('returns links for multiple entities', async () => {
+    mockRedis.smembers.mockImplementation(async (key: string) => {
+      if (key === 'entity:A:calls') return ['X', 'Y']
+      if (key === 'entity:B:calls') return ['X']
+      return []
+    })
+    const links = await getLinksForEntities(['A', 'B'])
+    expect(links).toHaveLength(3)
+    expect(links).toContainEqual({ source: 'A', target: 'X' })
+    expect(links).toContainEqual({ source: 'A', target: 'Y' })
+    expect(links).toContainEqual({ source: 'B', target: 'X' })
   })
 })
 

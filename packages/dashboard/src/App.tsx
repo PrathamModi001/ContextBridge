@@ -22,7 +22,7 @@ export function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-base overflow-hidden">
+    <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--color-base)' }}>
       <TopBar
         connected={connected}
         entityCount={nodes.length}
@@ -36,11 +36,7 @@ export function App() {
         <Graph nodes={nodes} links={links} />
         <ConflictFeed conflicts={conflicts} />
       </div>
-      <BottomBar
-        connected={connected}
-        entityCount={nodes.length}
-        conflictCount={conflicts.length}
-      />
+      <BottomBar connected={connected} entityCount={nodes.length} conflictCount={conflicts.length} />
     </div>
   )
 }

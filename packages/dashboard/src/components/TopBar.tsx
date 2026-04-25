@@ -11,75 +11,150 @@ interface Props {
 
 export function TopBar({ connected, entityCount, conflictCount, devCount, mode, onModeToggle }: Props) {
   return (
-    <header className="flex items-center gap-6 px-5 h-14 border-b border-cb-border bg-surface shrink-0 select-none">
+    <header
+      className="shrink-0 flex items-center gap-0 select-none"
+      style={{
+        height: 52,
+        borderBottom: '1px solid var(--color-cb-border)',
+        background: 'var(--color-surface)',
+      }}
+    >
       {/* Logo */}
-      <div className="flex items-center gap-2.5">
-        <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-          <circle cx="11" cy="11" r="10" stroke="#00e87a" strokeWidth="1.5" opacity="0.4" />
-          <circle cx="11" cy="11" r="5" fill="#00e87a" opacity="0.9" />
-          <line x1="11" y1="1" x2="11" y2="6" stroke="#00e87a" strokeWidth="1.5" />
-          <line x1="11" y1="16" x2="11" y2="21" stroke="#00e87a" strokeWidth="1.5" />
-          <line x1="1" y1="11" x2="6" y2="11" stroke="#00e87a" strokeWidth="1.5" />
-          <line x1="16" y1="11" x2="21" y2="11" stroke="#00e87a" strokeWidth="1.5" />
-        </svg>
-        <span className="font-display text-base font-semibold tracking-tight text-cb-text">
+      <div
+        className="flex items-center gap-3 px-5"
+        style={{ borderRight: '1px solid var(--color-cb-border)', height: '100%' }}
+      >
+        <LogoMark />
+        <span
+          className="font-display"
+          style={{ fontSize: 16, fontWeight: 800, color: 'var(--color-cb-text)', letterSpacing: '-0.02em' }}
+        >
           ContextBridge
         </span>
+        <LiveChip connected={connected} />
       </div>
-
-      {/* Live indicator */}
-      <div className="flex items-center gap-1.5">
-        <div
-          className={`w-[7px] h-[7px] rounded-full ${connected ? 'bg-cb-green animate-pulse-dot' : 'bg-cb-dim'}`}
-          style={connected ? { boxShadow: '0 0 6px #00e87a' } : undefined}
-        />
-        <span className={`font-code text-[11px] tracking-widest ${connected ? 'text-cb-green' : 'text-cb-dim'}`}>
-          {connected ? 'LIVE' : 'OFFLINE'}
-        </span>
-      </div>
-
-      <div className="w-px h-5 bg-cb-border" />
 
       {/* Stats */}
-      <div className="flex gap-5">
-        <Stat label="ENTITIES" value={entityCount} />
-        <Stat label="CONFLICTS" value={conflictCount} alert={conflictCount > 0} />
-        <Stat label="DEVS" value={devCount} />
+      <div className="flex items-center gap-px flex-1 px-4">
+        <Stat label="Entities" value={entityCount} />
+        <StatDivider />
+        <Stat label="Conflicts" value={conflictCount} danger={conflictCount > 0} />
+        <StatDivider />
+        <Stat label="Devs" value={devCount} />
       </div>
 
-      <div className="flex-1" />
-
       {/* Mode toggle */}
-      <div className="flex items-center gap-2.5">
-        <span className="font-code text-[10px] tracking-widest text-cb-muted">AGENT MODE</span>
-        <button
-          onClick={onModeToggle}
-          className="flex items-center bg-raised border border-cb-border-bright rounded-full p-1 gap-0.5 cursor-pointer"
-        >
-          <Pill label="SMART" active={mode === 'smart'} color="green" />
-          <Pill label="DUMB" active={mode === 'dumb'} color="red" />
-        </button>
+      <div
+        className="flex items-center gap-3 px-5"
+        style={{ borderLeft: '1px solid var(--color-cb-border)', height: '100%' }}
+      >
+        <span className="font-ui" style={{ fontSize: 12, color: 'var(--color-cb-muted)' }}>
+          Agent mode
+        </span>
+        <ModeToggle mode={mode} onToggle={onModeToggle} />
       </div>
     </header>
   )
 }
 
-function Stat({ label, value, alert }: { label: string; value: number; alert?: boolean }) {
+function LogoMark() {
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="font-code text-[9px] tracking-widest text-cb-dim">{label}</span>
-      <span className={`font-code text-lg font-medium leading-none transition-colors ${alert ? 'text-cb-red' : 'text-cb-text'}`}>
-        {value}
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+      <circle cx="10" cy="10" r="9" stroke="var(--color-cb-accent)" strokeWidth="1.5" opacity="0.3" />
+      <circle cx="10" cy="10" r="4" fill="var(--color-cb-accent)" opacity="0.9" />
+      <line x1="10" y1="1" x2="10" y2="5.5" stroke="var(--color-cb-accent)" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="10" y1="14.5" x2="10" y2="19" stroke="var(--color-cb-accent)" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="1" y1="10" x2="5.5" y2="10" stroke="var(--color-cb-accent)" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="14.5" y1="10" x2="19" y2="10" stroke="var(--color-cb-accent)" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function LiveChip({ connected }: { connected: boolean }) {
+  return (
+    <div
+      className="flex items-center gap-1.5 px-2 py-1 rounded-full"
+      style={{
+        background: connected ? 'var(--color-cb-green-dim)' : 'transparent',
+        border: `1px solid ${connected ? 'oklch(71% 0.17 153 / 0.2)' : 'var(--color-cb-border)'}`,
+      }}
+    >
+      <span
+        className={connected ? 'animate-live-pulse' : ''}
+        style={{
+          display: 'block',
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: connected ? 'var(--color-cb-green)' : 'var(--color-cb-dim)',
+        }}
+      />
+      <span
+        className="font-mono"
+        style={{ fontSize: 10, color: connected ? 'var(--color-cb-green)' : 'var(--color-cb-dim)', letterSpacing: '0.04em' }}
+      >
+        {connected ? 'live' : 'offline'}
       </span>
     </div>
   )
 }
 
-function Pill({ label, active, color }: { label: string; active: boolean; color: 'green' | 'red' }) {
-  const bg = active ? (color === 'green' ? 'bg-cb-green' : 'bg-cb-red') : 'bg-transparent'
-  const text = active ? 'text-base' : 'text-cb-muted'
+function Stat({ label, value, danger }: { label: string; value: number; danger?: boolean }) {
   return (
-    <span className={`px-2.5 py-0.5 rounded-[14px] font-code text-[10px] font-medium tracking-widest transition-all ${bg} ${text}`}>
+    <div className="flex items-baseline gap-2 px-4">
+      <span
+        className="font-ui tabular-nums"
+        style={{ fontSize: 22, fontWeight: 600, color: danger ? 'var(--color-cb-red)' : 'var(--color-cb-text)', letterSpacing: '-0.02em', lineHeight: 1 }}
+      >
+        {value}
+      </span>
+      <span className="font-ui" style={{ fontSize: 12, color: 'var(--color-cb-muted)' }}>
+        {label}
+      </span>
+    </div>
+  )
+}
+
+function StatDivider() {
+  return (
+    <div style={{ width: 1, height: 20, background: 'var(--color-cb-border)', margin: '0 4px' }} />
+  )
+}
+
+function ModeToggle({ mode, onToggle }: { mode: AgentMode; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className="flex items-center rounded-lg overflow-hidden"
+      style={{
+        border: '1px solid var(--color-cb-border)',
+        background: 'var(--color-raised)',
+        padding: 3,
+        gap: 2,
+        cursor: 'pointer',
+      }}
+      title={`Switch to ${mode === 'smart' ? 'dumb' : 'smart'} mode`}
+    >
+      <TogglePill label="Smart" active={mode === 'smart'} activeColor="var(--color-cb-green)" />
+      <TogglePill label="Dumb" active={mode === 'dumb'} activeColor="var(--color-cb-red)" />
+    </button>
+  )
+}
+
+function TogglePill({ label, active, activeColor }: { label: string; active: boolean; activeColor: string }) {
+  return (
+    <span
+      className="font-ui"
+      style={{
+        padding: '3px 10px',
+        borderRadius: 6,
+        fontSize: 12,
+        fontWeight: 500,
+        background: active ? activeColor : 'transparent',
+        color: active ? (label === 'Smart' ? '#0d0c0b' : '#fff') : 'var(--color-cb-muted)',
+        transition: 'background 0.15s, color 0.15s',
+      }}
+    >
       {label}
     </span>
   )

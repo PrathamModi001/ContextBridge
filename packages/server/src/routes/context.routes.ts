@@ -1,6 +1,15 @@
 import { Router, Request, Response, NextFunction } from 'express'
+import { z } from 'zod'
 import { buildSnapshot, buildMarkdownSnapshot, validateCodeUsage } from '../services/context/context.service'
 import { badRequest } from '../middlewares/errorHandler'
+import { validateRequest } from '../middlewares/validateRequest'
+
+const validateUsageBody = z.object({ code: z.string().min(1).max(20_000) })
+const snapshotQuery = z.object({
+  format: z.enum(['json', 'markdown']).optional(),
+  entity: z.string().min(1).max(200).optional(),
+  depth: z.coerce.number().int().min(1).max(5).optional(),
+})
 
 export async function getSnapshotHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -43,6 +52,6 @@ export async function validateUsageHandler(req: Request, res: Response, next: Ne
 }
 
 const router = Router()
-router.get('/snapshot', getSnapshotHandler)
-router.post('/validate', validateUsageHandler)
+router.get('/snapshot', validateRequest({ query: snapshotQuery }), getSnapshotHandler)
+router.post('/validate', validateRequest({ body: validateUsageBody }), validateUsageHandler)
 export default router

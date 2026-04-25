@@ -26,4 +26,3 @@ export async function connectRedis(): Promise<void> {
   await client.connect()
 }
 
-export { redisClient as default }

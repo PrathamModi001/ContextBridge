@@ -1,7 +1,12 @@
 import { Router, Request, Response, NextFunction } from 'express'
+import { z } from 'zod'
 import { getRedisClient } from '../config/redis'
 import { getImpactCount, getDependents, getEntityClients } from '../services/graph/graph.service'
 import { notFound } from '../middlewares/errorHandler'
+import { validateRequest } from '../middlewares/validateRequest'
+
+const nameParams = z.object({ name: z.string().min(1).max(200) })
+const nameValidation = validateRequest({ params: nameParams })
 
 export async function getEntityHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -44,8 +49,8 @@ export async function getEntityClientsHandler(req: Request, res: Response, next:
 }
 
 const router = Router()
-router.get('/:name', getEntityHandler)
-router.get('/:name/impact', getEntityImpactHandler)
-router.get('/:name/dependents', getEntityDependentsHandler)
-router.get('/:name/clients', getEntityClientsHandler)
+router.get('/:name', nameValidation, getEntityHandler)
+router.get('/:name/impact', nameValidation, getEntityImpactHandler)
+router.get('/:name/dependents', nameValidation, getEntityDependentsHandler)
+router.get('/:name/clients', nameValidation, getEntityClientsHandler)
 export default router

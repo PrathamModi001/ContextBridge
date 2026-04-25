@@ -1,5 +1,10 @@
 import { Router, Request, Response, NextFunction } from 'express'
+import { z } from 'zod'
 import { getEntityHistory, getDevHistory, getRecentChanges } from '../services/audit/audit.service'
+import { validateRequest } from '../middlewares/validateRequest'
+
+const entityNameParams = z.object({ name: z.string().min(1).max(200) })
+const devIdParams = z.object({ devId: z.string().min(1).max(100) })
 
 function parseLimit(raw: unknown): number {
   const n = parseInt(raw as string, 10)
@@ -37,7 +42,7 @@ export async function getRecentChangesHandler(req: Request, res: Response, next:
 }
 
 const router = Router()
-router.get('/entities/:name', getEntityHistoryHandler)
-router.get('/devs/:devId', getDevHistoryHandler)
+router.get('/entities/:name', validateRequest({ params: entityNameParams }), getEntityHistoryHandler)
+router.get('/devs/:devId', validateRequest({ params: devIdParams }), getDevHistoryHandler)
 router.get('/recent', getRecentChangesHandler)
 export default router

@@ -1,28 +1,61 @@
 import type { DevStatus } from '../types'
 
+const STATUS_COLORS = {
+  online: 'var(--color-cb-green)',
+  idle:   'var(--color-cb-amber)',
+  offline:'var(--color-cb-dim)',
+}
+
 interface Props {
   devStatuses: Map<string, DevStatus>
 }
 
 export function DevPanel({ devStatuses }: Props) {
   const devs = [...devStatuses.values()]
-  const online = devs.filter(d => d.connected).length
+  const onlineCount = devs.filter(d => d.connected).length
 
   return (
-    <aside className="w-60 border-r border-cb-border bg-surface flex flex-col overflow-hidden shrink-0">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-cb-border">
-        <span className="font-code text-[10px] tracking-widest text-cb-dim">DEVELOPERS</span>
-        <span className="ml-auto font-code text-[11px] text-cb-muted">{online}/{devs.length}</span>
+    <aside
+      className="flex flex-col overflow-hidden shrink-0"
+      style={{
+        width: 240,
+        borderRight: '1px solid var(--color-cb-border)',
+        background: 'var(--color-surface)',
+      }}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center justify-between px-4 shrink-0"
+        style={{ height: 44, borderBottom: '1px solid var(--color-cb-border)' }}
+      >
+        <span className="font-ui" style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-cb-text)' }}>
+          Developers
+        </span>
+        <span className="font-mono" style={{ fontSize: 11, color: 'var(--color-cb-muted)' }}>
+          {onlineCount}/{devs.length}
+        </span>
       </div>
 
-      <div className="flex-1 overflow-auto py-2">
+      {/* Dev list */}
+      <div className="flex-1 overflow-y-auto py-2">
         {devs.length === 0 ? (
-          <p className="px-4 py-8 text-center font-code text-[11px] text-cb-dim leading-loose">
-            No clients<br />connected
-          </p>
+          <EmptyDevs />
         ) : (
           devs.map(dev => <DevCard key={dev.devId} dev={dev} />)
         )}
+      </div>
+
+      {/* Footer — version */}
+      <div
+        className="flex items-center justify-between px-4 shrink-0"
+        style={{ height: 36, borderTop: '1px solid var(--color-cb-border)' }}
+      >
+        <span className="font-mono" style={{ fontSize: 10, color: 'var(--color-cb-dim)' }}>
+          ContextBridge
+        </span>
+        <span className="font-mono" style={{ fontSize: 10, color: 'var(--color-cb-dim)' }}>
+          v1.0.0
+        </span>
       </div>
     </aside>
   )
@@ -30,43 +63,105 @@ export function DevPanel({ devStatuses }: Props) {
 
 function DevCard({ dev }: { dev: DevStatus }) {
   const isStale = Date.now() - dev.lastHeartbeat > 45_000
-  const statusColor = !dev.connected ? '#3a3a5a' : isStale ? '#f59e0b' : '#00e87a'
-  const statusLabel = !dev.connected ? 'OFF' : isStale ? 'IDLE' : 'ON'
+  const statusColor = !dev.connected
+    ? STATUS_COLORS.offline
+    : isStale
+    ? STATUS_COLORS.idle
+    : STATUS_COLORS.online
+
+  const statusLabel = !dev.connected ? 'offline' : isStale ? 'idle' : 'online'
 
   return (
-    <div className="mx-2 my-1 p-2.5 rounded-lg bg-raised border border-cb-border">
-      <div className="flex items-center gap-2 mb-1.5">
-        <div
-          className="w-2 h-2 rounded-full shrink-0"
+    <div
+      className="mx-3 my-1 rounded-lg overflow-hidden"
+      style={{
+        background: 'var(--color-raised)',
+        border: '1px solid var(--color-cb-border)',
+      }}
+    >
+      {/* Card header */}
+      <div className="flex items-center gap-2.5 px-3 pt-2.5 pb-2">
+        <span
           style={{
+            display: 'block',
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
             background: statusColor,
-            boxShadow: dev.connected && !isStale ? `0 0 6px ${statusColor}` : 'none',
+            flexShrink: 0,
+            boxShadow: dev.connected && !isStale ? `0 0 5px ${statusColor}60` : 'none',
           }}
         />
-        <span className="font-code text-[12px] font-medium text-cb-text flex-1 truncate">
+        <span
+          className="font-mono flex-1 truncate"
+          style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-cb-text)' }}
+        >
           {dev.devId}
         </span>
-        <span className="font-code text-[9px]" style={{ color: statusColor }}>
+        <span className="font-ui" style={{ fontSize: 10, color: statusColor }}>
           {statusLabel}
         </span>
       </div>
 
+      {/* Last entity */}
       {dev.lastEntity && (
-        <p className="font-code text-[10px] text-cb-muted truncate mb-1">↳ {dev.lastEntity}</p>
+        <div
+          className="px-3 py-1.5"
+          style={{ borderTop: '1px solid var(--color-cb-border)' }}
+        >
+          <span className="font-ui" style={{ fontSize: 10, color: 'var(--color-cb-muted)' }}>
+            Last edited
+          </span>
+          <p className="font-mono truncate" style={{ fontSize: 11, color: 'var(--color-cb-accent)', marginTop: 1 }}>
+            {dev.lastEntity}
+          </p>
+        </div>
       )}
 
+      {/* Entity badges */}
       {dev.entities.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-1">
-          {dev.entities.slice(0, 8).map(e => (
-            <span key={e} className="font-code text-[9px] px-1.5 py-px rounded bg-hover text-cb-muted max-w-[72px] truncate">
+        <div
+          className="px-3 pb-2.5 pt-1.5 flex flex-wrap gap-1"
+          style={{ borderTop: dev.lastEntity ? '1px solid var(--color-cb-border)' : undefined }}
+        >
+          {dev.entities.slice(0, 6).map(e => (
+            <span
+              key={e}
+              className="font-mono truncate"
+              style={{
+                fontSize: 9,
+                padding: '2px 6px',
+                borderRadius: 4,
+                background: 'var(--color-hover)',
+                color: 'var(--color-cb-muted)',
+                border: '1px solid var(--color-cb-border)',
+                maxWidth: 84,
+              }}
+            >
               {e}
             </span>
           ))}
-          {dev.entities.length > 8 && (
-            <span className="font-code text-[9px] text-cb-dim px-1">+{dev.entities.length - 8}</span>
+          {dev.entities.length > 6 && (
+            <span className="font-ui" style={{ fontSize: 10, color: 'var(--color-cb-dim)', alignSelf: 'center' }}>
+              +{dev.entities.length - 6}
+            </span>
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+function EmptyDevs() {
+  return (
+    <div className="flex flex-col items-center justify-center h-40 gap-2">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none" opacity="0.2">
+        <circle cx="14" cy="10" r="5" stroke="var(--color-cb-text)" strokeWidth="1.5" />
+        <path d="M4 26c0-5.523 4.477-10 10-10s10 4.477 10 10" stroke="var(--color-cb-text)" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+      <span className="font-ui" style={{ fontSize: 12, color: 'var(--color-cb-dim)', textAlign: 'center', lineHeight: 1.5 }}>
+        No clients connected
+      </span>
     </div>
   )
 }

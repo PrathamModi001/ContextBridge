@@ -10,6 +10,12 @@ jest.mock('../../src/config/postgres', () => ({
   connectPostgres: jest.fn(),
 }))
 
+jest.mock('../../src/services/graph/graph.service', () => ({
+  updateDependents:  jest.fn().mockResolvedValue(undefined),
+  updateClientIndex: jest.fn().mockResolvedValue(undefined),
+  updateEntityCalls: jest.fn().mockResolvedValue(undefined),
+}))
+
 import { handleDiff } from '../../src/services/entity/entity.service'
 import { getRedisClient } from '../../src/config/redis'
 import { db } from '../../src/config/postgres'
@@ -18,9 +24,10 @@ import { EntityDiffPayload } from '../../src/types'
 // ── shared mock redis ────────────────────────────────────────────────────────
 
 const mockRedis = {
-  hset: jest.fn().mockResolvedValue(1),
-  set: jest.fn().mockResolvedValue('OK'),
-  sadd: jest.fn().mockResolvedValue(1),
+  hset:   jest.fn().mockResolvedValue(1),
+  set:    jest.fn().mockResolvedValue('OK'),
+  sadd:   jest.fn().mockResolvedValue(1),
+  exists: jest.fn().mockResolvedValue(0), // no known entities in tests → no graph wiring
 }
 
 beforeEach(() => {
