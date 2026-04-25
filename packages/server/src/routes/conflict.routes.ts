@@ -7,7 +7,10 @@ import { Resolution } from '../types'
 export async function getConflictsHandler(_req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const raw       = await getRedisClient().lrange('conflicts:recent', 0, 99)
-    const conflicts = raw.map((s: string) => JSON.parse(s) as unknown)
+    const conflicts = raw.flatMap((s: string) => {
+      try   { return [JSON.parse(s) as unknown] }
+      catch { return [] }
+    })
     res.json(conflicts)
   } catch (err) { next(err) }
 }
@@ -41,7 +44,7 @@ export async function resolveSessionHandler(req: Request, res: Response, next: N
 
     const session = await getSession(req.params.id)
     if (!session) { res.status(404).json({ error: 'Session not found' }); return }
-    if (session.status === 'resolved') { res.status(409).json({ error: 'Already resolved' }); return }
+    if (session.status !== 'open') { res.status(409).json({ error: 'Session already resolved or resolving' }); return }
 
     await markResolving(req.params.id, resolvedBy)
     await resolveConflictSession(req.params.id, { type, mergedBody, mergedSig, resolvedBy })

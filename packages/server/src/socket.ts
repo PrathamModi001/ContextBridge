@@ -99,6 +99,7 @@ export async function resolveConflictSession(
   sessionId:  string,
   resolution: Resolution,
 ): Promise<void> {
+  if (!io) throw new Error('Socket server not initialized')
   const session = await resolveSession(sessionId, resolution)
 
   const acceptedBody = session.mergedBody ?? ''
