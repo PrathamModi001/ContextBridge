@@ -12,7 +12,7 @@ jest.mock('../../src/services/graph/graph.service', () => ({
   getEntityClients: jest.fn().mockResolvedValue([]),
 }))
 
-import { detectConflict, classifySeverity, storeConflict } from '../../src/services/conflict/conflict.detector'
+import { detectConflict, classifySeverity, storeConflict, detectConflictType, isSecuritySensitive } from '../../src/services/conflict/conflict.detector'
 import { getRedisClient } from '../../src/config/redis'
 import { getImpactCount } from '../../src/services/graph/graph.service'
 
@@ -172,5 +172,44 @@ describe('storeConflict', () => {
     }
     await storeConflict(conflict)
     expect(mockRedis.ltrim).toHaveBeenCalledWith('conflicts:recent', 0, 99)
+  })
+})
+
+describe('detectConflictType', () => {
+  it('returns auth_bypass for validateToken', () => {
+    expect(detectConflictType('validateToken', 'old', 'new', 'function')).toBe('auth_bypass')
+  })
+  it('returns auth_bypass for requireScope', () => {
+    expect(detectConflictType('requireScope', 'old', 'new', 'function')).toBe('auth_bypass')
+  })
+  it('returns auth_bypass for requireKYC', () => {
+    expect(detectConflictType('requireKYC', 'old', 'new', 'function')).toBe('auth_bypass')
+  })
+  it('returns type_violation for interface entity', () => {
+    expect(detectConflictType('Account', 'old', 'new', 'interface')).toBe('type_violation')
+  })
+  it('returns type_violation for type entity', () => {
+    expect(detectConflictType('Transaction', 'old', 'new', 'type')).toBe('type_violation')
+  })
+  it('returns signature_drift for regular function', () => {
+    expect(detectConflictType('transfer', 'old', 'new', 'function')).toBe('signature_drift')
+  })
+})
+
+describe('isSecuritySensitive', () => {
+  it('returns true for validateToken', () => {
+    expect(isSecuritySensitive('validateToken')).toBe(true)
+  })
+  it('returns true for requireKYC', () => {
+    expect(isSecuritySensitive('requireKYC')).toBe(true)
+  })
+  it('returns true for checkCompliance', () => {
+    expect(isSecuritySensitive('checkCompliance')).toBe(true)
+  })
+  it('returns false for transfer', () => {
+    expect(isSecuritySensitive('transfer')).toBe(false)
+  })
+  it('returns false for deposit', () => {
+    expect(isSecuritySensitive('deposit')).toBe(false)
   })
 })
