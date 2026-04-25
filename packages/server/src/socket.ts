@@ -3,7 +3,7 @@ import { Server, Socket } from 'socket.io'
 import { createModuleLogger } from './logger/logger'
 import { getRedisClient } from './config/redis'
 import * as entityService from './services/entity/entity.service'
-import { EntityDiffPayload, ConflictPayload, EnrichedConflictPayload, Resolution } from './types'
+import { EntityDiffPayload, EnrichedConflictPayload, Resolution } from './types'
 import { detectConflict, detectConflictType, isSecuritySensitive, storeConflict } from './services/conflict/conflict.detector'
 import { createSession, getSession, resolveSession, appendStaleWrite, getOpenSessions } from './services/conflict/conflict.session.service'
 import { getEntityClients, getLinksForEntities } from './services/graph/graph.service'
@@ -17,9 +17,8 @@ export function getIo(): Server { return io }
 export async function handleEntityDiffEvent(
   devId:   string,
   payload: EntityDiffPayload[],
-): Promise<(ConflictPayload | EnrichedConflictPayload)[]> {
-  const redis     = getRedisClient()
-  const conflicts: (ConflictPayload | EnrichedConflictPayload)[] = []
+): Promise<void> {
+  const redis = getRedisClient()
 
   for (const entity of payload) {
     const openSessionId = await entityService.getEntityConflictSession(entity.name)
@@ -65,7 +64,6 @@ export async function handleEntityDiffEvent(
           devBBody: entity.body,
         }
 
-        conflicts.push(enriched)
         await storeConflict(conflict)
 
         const clients = await getEntityClients(entity.name)
@@ -95,7 +93,6 @@ export async function handleEntityDiffEvent(
   }
 
   await entityService.handleDiff(devId, payload)
-  return conflicts
 }
 
 export async function resolveConflictSession(
@@ -104,8 +101,8 @@ export async function resolveConflictSession(
 ): Promise<void> {
   const session = await resolveSession(sessionId, resolution)
 
-  const acceptedBody = resolution.mergedBody
-  const acceptedSig  = resolution.mergedSig
+  const acceptedBody = session.mergedBody ?? ''
+  const acceptedSig  = session.mergedSig  ?? ''
 
   /* Push accepted version to both agents */
   for (const agentDevId of [session.devAId, session.devBId]) {
