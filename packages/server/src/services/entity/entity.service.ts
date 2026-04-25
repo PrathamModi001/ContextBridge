@@ -20,21 +20,17 @@ const BUILTIN_IDENTIFIERS = new Set([
   'log', 'error', 'warn', 'info', 'debug',
 ])
 
-/** Extract likely entity call references from a function body. */
 function extractCalls(body: string): string[] {
   const callPattern = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(/g
-  const candidates = new Set<string>()
+  const candidates  = new Set<string>()
   let match: RegExpExecArray | null
   while ((match = callPattern.exec(body)) !== null) {
     const name = match[1]
-    if (!BUILTIN_IDENTIFIERS.has(name) && name.length > 1) {
-      candidates.add(name)
-    }
+    if (!BUILTIN_IDENTIFIERS.has(name) && name.length > 1) candidates.add(name)
   }
   return [...candidates]
 }
 
-/** Filter candidate names to only those with an existing entity:X hash in Redis. */
 async function knownEntityCalls(redis: Redis, body: string): Promise<string[]> {
   const candidates = extractCalls(body)
   if (candidates.length === 0) return []
@@ -46,24 +42,30 @@ async function knownEntityCalls(redis: Redis, body: string): Promise<string[]> {
   return known
 }
 
+/** Returns the conflictSessionId for an entity if one is open, otherwise null. */
+export async function getEntityConflictSession(entityName: string): Promise<string | null> {
+  const redis = getRedisClient()
+  const sessionId = await redis.hget(`entity:${entityName}:meta`, 'conflictSessionId')
+  return sessionId ?? null
+}
+
 export async function handleDiff(devId: string, entities: EntityDiffPayload[]): Promise<void> {
   const redis = getRedisClient()
 
   for (const entity of entities) {
     await redis.hset(`entity:${entity.name}`, {
       signature: entity.newSig,
-      body: entity.body,
+      body:      entity.body,
       devId,
-      file: entity.file,
-      line: String(entity.line),
-      kind: entity.kind,
+      file:      entity.file,
+      line:      String(entity.line),
+      kind:      entity.kind,
       updatedAt: new Date().toISOString(),
     })
 
-    await redis.set(`lock:${entity.name}`, devId, 'EX', 15)
+    await redis.set(`lock:${entity.name}`, devId, 'EX', 300)
     await redis.sadd(`client:${devId}:entities`, entity.name)
 
-    /* Dependency graph wiring */
     const calledNames = await knownEntityCalls(redis, entity.body ?? '')
     if (calledNames.length > 0) {
       await updateEntityCalls(entity.name, calledNames)
