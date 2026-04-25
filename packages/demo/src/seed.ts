@@ -5,11 +5,20 @@ const AUTH_TS = `export async function validateUser(id: string): Promise<{ id: s
   return { id, name: 'user' }
 }
 
+export async function loginUser(email: string, password: string): Promise<{ token: string } | null> {
+  if (!email || !password) return null
+  return { token: 'jwt-token-placeholder' }
+}
+
+export function hashPassword(password: string): string {
+  return Buffer.from(password).toString('base64')
+}
+
 export type Permission = 'read' | 'write' | 'admin'
 
 export interface AuthConfig {
   secret: string
-  ttl: number
+  ttl:    number
   maxAttempts?: number
 }
 `
@@ -19,6 +28,15 @@ const USER_SERVICE_TS = `import { validateUser, type Permission } from './auth'
 export class UserService {
   async getUser(id: string) {
     return validateUser(id)
+  }
+
+  async createUser(email: string, name: string) {
+    return { id: Math.random().toString(36).slice(2), email, name }
+  }
+
+  async updateUser(id: string, data: Partial<{ name: string; email: string }>) {
+    const user = await validateUser(id)
+    return { ...user, ...data }
   }
 
   async checkPermission(userId: string, _permission: Permission): Promise<boolean> {
@@ -32,10 +50,29 @@ export async function getUser(id: string): Promise<{ id: string; name: string }>
 }
 `
 
+const API_TS = `import { UserService } from './user.service'
+
+const svc = new UserService()
+
+export async function getUserProfile(userId: string) {
+  return svc.getUser(userId)
+}
+
+export async function updateProfile(userId: string, data: { name?: string; email?: string }) {
+  return svc.updateUser(userId, data)
+}
+
+export async function searchUsers(query: string): Promise<{ id: string; name: string }[]> {
+  void query
+  return []
+}
+`
+
 const WORKSPACES = ['workspace-devA', 'workspace-devB']
 const FILES = [
   { name: 'auth.ts',         content: AUTH_TS },
   { name: 'user.service.ts', content: USER_SERVICE_TS },
+  { name: 'api.ts',          content: API_TS },
 ]
 
 const demoRoot = path.resolve(__dirname, '..')

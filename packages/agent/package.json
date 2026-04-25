@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "dotenv": "^16.4.5",
-    "groq-sdk": "^0.9.1"
+    "groq-sdk": "^0.9.1",
+    "socket.io-client": "^4.7.5"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",
