@@ -3,32 +3,135 @@ import { Server, Socket } from 'socket.io'
 import { createModuleLogger } from './logger/logger'
 import { getRedisClient } from './config/redis'
 import * as entityService from './services/entity/entity.service'
-import { EntityDiffPayload, ConflictPayload } from './types'
-import { detectConflict, storeConflict } from './services/conflict/conflict.detector'
+import { EntityDiffPayload, ConflictPayload, EnrichedConflictPayload, Resolution } from './types'
+import { detectConflict, detectConflictType, isSecuritySensitive, storeConflict } from './services/conflict/conflict.detector'
+import { createSession, getSession, resolveSession, appendStaleWrite, getOpenSessions } from './services/conflict/conflict.session.service'
 import { getEntityClients, getLinksForEntities } from './services/graph/graph.service'
 
 const log = createModuleLogger('socket')
 
 let io: Server
 
-export function getIo(): Server {
-  return io
-}
+export function getIo(): Server { return io }
 
 export async function handleEntityDiffEvent(
-  devId: string,
+  devId:   string,
   payload: EntityDiffPayload[],
-): Promise<ConflictPayload[]> {
-  const conflicts: ConflictPayload[] = []
+): Promise<(ConflictPayload | EnrichedConflictPayload)[]> {
+  const redis     = getRedisClient()
+  const conflicts: (ConflictPayload | EnrichedConflictPayload)[] = []
+
   for (const entity of payload) {
-    const conflict = await detectConflict(entity.name, devId, entity.newSig)
-    if (conflict) {
-      conflicts.push(conflict)
-      await storeConflict(conflict)
+    const openSessionId = await entityService.getEntityConflictSession(entity.name)
+
+    if (openSessionId) {
+      /* ── Stale write: entity already has open conflict session ── */
+      const session = await getSession(openSessionId)
+      if (session) {
+        const blastRadius = await appendStaleWrite(
+          openSessionId, devId, entity.name,
+          detectConflictType(entity.name, session.devASig, entity.newSig, entity.kind),
+        )
+        io.to('room:dashboard').emit('conflict:blast:update', {
+          sessionId:      openSessionId,
+          blastRadius,
+          newStaleEntity: entity.name,
+          devId,
+        })
+      }
+    } else {
+      /* ── Check for new conflict ── */
+      const conflict = await detectConflict(entity.name, devId, entity.newSig)
+      if (conflict) {
+        const devABody = await redis.hget(`entity:${entity.name}`, 'body') ?? ''
+        const devASig  = await redis.hget(`entity:${entity.name}`, 'signature') ?? ''
+        const conflictType      = detectConflictType(entity.name, devASig, entity.newSig, entity.kind)
+        const securitySensitive = isSecuritySensitive(entity.name)
+
+        const session = await createSession(
+          entity.name,
+          conflict.devAId, devId,
+          devABody, devASig,
+          entity.body, entity.newSig,
+          conflictType, securitySensitive,
+        )
+
+        const enriched: EnrichedConflictPayload = {
+          ...conflict,
+          sessionId: session.id,
+          conflictType,
+          securitySensitive,
+          devABody,
+          devBBody: entity.body,
+        }
+
+        conflicts.push(enriched)
+        await storeConflict(conflict)
+
+        const clients = await getEntityClients(entity.name)
+        const targets = new Set([...clients, conflict.devAId, devId])
+        for (const clientId of targets) {
+          io.to(`room:${clientId}`).emit('entity:conflict', enriched)
+        }
+        io.to('room:dashboard').emit('conflict:session:opened', {
+          sessionId:         session.id,
+          entityName:        session.entityName,
+          devAId:            session.devAId,
+          devBId:            session.devBId,
+          devASig:           session.devASig,
+          devBSig:           session.devBSig,
+          devABody:          session.devABody,
+          devBBody:          session.devBBody,
+          blastRadius:       session.blastRadius,
+          securitySensitive: session.securitySensitive,
+          conflictType:      session.conflictType,
+        })
+        io.to('room:dashboard').emit('conflict:detected', enriched)
+        io.to('room:dashboard').emit('graph:links', [
+          { source: devId, target: entity.name, conflict: true },
+        ])
+      }
     }
   }
+
   await entityService.handleDiff(devId, payload)
   return conflicts
+}
+
+export async function resolveConflictSession(
+  sessionId:  string,
+  resolution: Resolution,
+): Promise<void> {
+  const session = await resolveSession(sessionId, resolution)
+
+  const acceptedBody = resolution.mergedBody
+  const acceptedSig  = resolution.mergedSig
+
+  /* Push accepted version to both agents */
+  for (const agentDevId of [session.devAId, session.devBId]) {
+    io.to(`room:${agentDevId}`).emit('conflict:accepted', {
+      entityName: session.entityName,
+      body:       acceptedBody,
+      sig:        acceptedSig,
+      file:       '',
+    })
+  }
+
+  io.to('room:dashboard').emit('conflict:resolved', {
+    sessionId,
+    entityName:     session.entityName,
+    resolutionType: resolution.type,
+    resolvedBy:     resolution.resolvedBy,
+  })
+  io.to('room:dashboard').emit('entity:updated', {
+    name:      session.entityName,
+    devId:     resolution.resolvedBy,
+    signature: acceptedSig,
+    kind:      'function',
+    file:      '',
+    severity:  'info' as const,
+    locked:    false,
+  })
 }
 
 export async function handleHeartbeatEvent(devId: string): Promise<void> {
@@ -37,19 +140,25 @@ export async function handleHeartbeatEvent(devId: string): Promise<void> {
 
 async function sendDashboardSnapshot(socket: Socket): Promise<void> {
   try {
-    const redis = getRedisClient()
+    for (const [, s] of io.sockets.sockets) {
+      const auth = s.handshake.auth as { devId?: string }
+      if (auth.devId && auth.devId !== 'dashboard') {
+        socket.emit('client:connected', { devId: auth.devId })
+      }
+    }
+
+    const redis      = getRedisClient()
     const entityKeys = await redis.keys('entity:*')
-    const seen = new Set<string>()
+    const seen       = new Set<string>()
 
     for (const key of entityKeys) {
-      if (key.includes(':dependents') || key.includes(':clients') || key.includes(':calls')) continue
+      if (key.includes(':meta') || key.includes(':dependents') ||
+          key.includes(':clients') || key.includes(':calls')) continue
       const name = key.replace('entity:', '')
       if (seen.has(name)) continue
       seen.add(name)
-
       const fields = await redis.hgetall(key)
-      if (!fields || !fields.signature) continue
-
+      if (!fields?.signature) continue
       socket.emit('entity:updated', {
         name,
         devId:     fields.devId ?? 'unknown',
@@ -68,22 +177,40 @@ async function sendDashboardSnapshot(socket: Socket): Promise<void> {
         socket.emit('graph:links', links.map(l => ({ ...l, conflict: false })))
       }
     }
+
+    const rawConflicts = await redis.lrange('conflicts:recent', 0, 9)
+    for (const raw of [...rawConflicts].reverse()) {
+      try { socket.emit('conflict:detected', JSON.parse(raw)) } catch { /* skip */ }
+    }
+
+    /* Replay open conflict sessions */
+    const openSessions = await getOpenSessions()
+    for (const session of openSessions) {
+      socket.emit('conflict:session:opened', {
+        sessionId:         session.id,
+        entityName:        session.entityName,
+        devAId:            session.devAId,
+        devBId:            session.devBId,
+        devASig:           session.devASig,
+        devBSig:           session.devBSig,
+        devABody:          session.devABody,
+        devBBody:          session.devBBody,
+        blastRadius:       session.blastRadius,
+        securitySensitive: session.securitySensitive,
+        conflictType:      session.conflictType,
+      })
+    }
   } catch (err) {
     log.error({ err }, 'failed to send dashboard snapshot')
   }
 }
 
 export function initSocket(httpServer: HttpServer): Server {
-  io = new Server(httpServer, {
-    cors: { origin: '*' },
-  })
+  io = new Server(httpServer, { cors: { origin: '*' } })
 
   io.on('connection', (socket) => {
     const { devId } = socket.handshake.auth as { devId?: string }
-    if (!devId) {
-      socket.disconnect()
-      return
-    }
+    if (!devId) { socket.disconnect(); return }
 
     socket.join(`room:${devId}`)
     io.emit('client:connected', { devId })
@@ -92,18 +219,17 @@ export function initSocket(httpServer: HttpServer): Server {
     socket.on('join', ({ room }: { room: string }) => {
       socket.join(`room:${room}`)
       log.info(`[socket] ${devId} joined room:${room}`)
-
       if (room === 'dashboard') {
         sendDashboardSnapshot(socket).catch(err =>
-          log.error({ err }, 'snapshot send error')
+          log.error({ err }, 'snapshot send error'),
         )
       }
     })
 
     socket.on('entity:diff', async (payload: EntityDiffPayload[]) => {
+      log.info({ devId, count: payload.length }, '[entity:diff] received')
       try {
-        const conflicts = await handleEntityDiffEvent(devId, payload)
-
+        await handleEntityDiffEvent(devId, payload)
         for (const entity of payload) {
           io.to('room:dashboard').emit('entity:updated', {
             name:      entity.name,
@@ -115,29 +241,9 @@ export function initSocket(httpServer: HttpServer): Server {
             locked:    true,
           })
         }
-
-        /* Emit graph edges so dashboard can render links */
-        const entityNames = payload.map(e => e.name)
-        const links = await getLinksForEntities(entityNames)
+        const links = await getLinksForEntities(payload.map(e => e.name))
         if (links.length > 0) {
           io.to('room:dashboard').emit('graph:links', links.map(l => ({ ...l, conflict: false })))
-        }
-
-        for (const conflict of conflicts) {
-          const clients = await getEntityClients(conflict.entityName)
-          const targets = new Set([...clients, conflict.devAId, devId])
-          for (const clientId of targets) {
-            io.to(`room:${clientId}`).emit('entity:conflict', conflict)
-          }
-          io.to('room:dashboard').emit('conflict:detected', {
-            ...conflict,
-            /* mark edges involving the conflicting entity as conflict links */
-          })
-
-          /* Update link severity for conflicting entity */
-          io.to('room:dashboard').emit('graph:links', [
-            { source: conflict.devBId, target: conflict.entityName, conflict: true },
-          ])
         }
       } catch (err) {
         log.error({ err }, 'entity:diff handler error')
@@ -147,6 +253,13 @@ export function initSocket(httpServer: HttpServer): Server {
     socket.on('heartbeat', async () => {
       try {
         await handleHeartbeatEvent(devId)
+        io.to('room:dashboard').emit('client:heartbeat', { devId, ts: Date.now() })
+        const redis = getRedisClient()
+        const owned = await redis.smembers(`client:${devId}:entities`)
+        for (const name of owned) {
+          const currentOwner = await redis.get(`lock:${name}`)
+          if (currentOwner === devId) await redis.expire(`lock:${name}`, 300)
+        }
       } catch (err) {
         log.error({ err }, 'heartbeat handler error')
       }
@@ -159,27 +272,20 @@ export function initSocket(httpServer: HttpServer): Server {
   })
 
   subscribeToKeyExpiry(io)
-
   return io
 }
 
 function subscribeToKeyExpiry(server: Server): void {
   const redis = getRedisClient()
-
-  /* Enable keyspace expiry notifications */
   redis.config('SET', 'notify-keyspace-events', 'Ex').catch((err: Error) =>
-    log.warn({ err }, 'could not set keyspace-events config (read-only Redis?)')
+    log.warn({ err }, 'could not set keyspace-events config'),
   )
-
   try {
     const subscriber = redis.duplicate()
-
-    /* Explicit connect required when lazyConnect: true */
     subscriber.connect().then(() => {
       subscriber.on('message', async (_channel: string, key: string) => {
         if (!key.startsWith('client:') || !key.endsWith(':heartbeat')) return
-
-        const parts = key.split(':')
+        const parts        = key.split(':')
         const expiredDevId = parts.slice(1, -1).join(':')
         try {
           const entityNames = await redis.smembers(`client:${expiredDevId}:entities`)
@@ -195,11 +301,8 @@ function subscribeToKeyExpiry(server: Server): void {
           log.error({ err }, 'keyspace expiry cleanup error')
         }
       })
-
       return subscriber.subscribe('__keyevent@0__:expired')
-    }).catch((err: Error) => {
-      log.error({ err }, 'keyspace subscription error')
-    })
+    }).catch((err: Error) => log.error({ err }, 'keyspace subscription error'))
   } catch (err) {
     log.error({ err }, 'failed to set up keyspace subscription')
   }
