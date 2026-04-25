@@ -87,6 +87,10 @@ export async function resolveSession(
   const redis = getRedisClient()
   const now   = new Date().toISOString()
 
+  if (resolution.type === 'manual_merge' && (!resolution.mergedBody || !resolution.mergedSig)) {
+    throw new Error('manual_merge resolution requires mergedBody and mergedSig')
+  }
+
   const session = await getSession(sessionId)
   if (!session) throw new Error(`Session ${sessionId} not found`)
 
