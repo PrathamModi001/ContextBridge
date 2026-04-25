@@ -4,6 +4,7 @@ module.exports = {
   testEnvironment: 'node',
   rootDir: '.',
   testMatch: ['**/__tests__/e2e/**/*.test.ts'],
+  setupFiles: ['<rootDir>/__tests__/e2e/env.setup.js'],
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {
       tsconfig: {
@@ -14,6 +15,4 @@ module.exports = {
     }],
   },
   testTimeout: 30_000,
-  globalSetup: undefined,
-  globalTeardown: undefined,
 }
