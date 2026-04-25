@@ -9,47 +9,68 @@ interface Props {
   onModeToggle: () => void
 }
 
+const M: React.CSSProperties = { fontFamily: 'var(--font-mono)' }
+
 export function TopBar({ connected, entityCount, conflictCount, devCount, mode, onModeToggle }: Props) {
   return (
     <header
-      className="shrink-0 flex items-center gap-0 select-none"
       style={{
-        height: 52,
-        borderBottom: '1px solid var(--color-cb-border)',
+        height: 44,
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
         background: 'var(--color-surface)',
+        borderBottom: '1px solid var(--color-border-hi)',
+        boxShadow: '0 1px 0 rgba(245,166,35,0.05), 0 1px 16px rgba(0,0,0,0.4)',
+        userSelect: 'none',
       }}
     >
       {/* Logo */}
       <div
-        className="flex items-center gap-3 px-5"
-        style={{ borderRight: '1px solid var(--color-cb-border)', height: '100%' }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '0 20px',
+          borderRight: '1px solid var(--color-border)',
+          height: '100%',
+          flexShrink: 0,
+        }}
       >
-        <LogoMark />
-        <span
-          className="font-display"
-          style={{ fontSize: 16, fontWeight: 800, color: 'var(--color-cb-text)', letterSpacing: '-0.02em' }}
-        >
-          ContextBridge
+        <HexIcon />
+        <span style={{ ...M, fontSize: 13, fontWeight: 600, letterSpacing: '0.07em', color: 'var(--color-text)' }}>
+          CTX<span style={{ color: 'var(--color-amber)' }}>BRIDGE</span>
         </span>
-        <LiveChip connected={connected} />
+        <LiveBadge connected={connected} />
       </div>
 
       {/* Stats */}
-      <div className="flex items-center gap-px flex-1 px-4">
-        <Stat label="Entities" value={entityCount} />
-        <StatDivider />
-        <Stat label="Conflicts" value={conflictCount} danger={conflictCount > 0} />
-        <StatDivider />
-        <Stat label="Devs" value={devCount} />
+      <div style={{ display: 'flex', alignItems: 'center', flex: 1, height: '100%', padding: '0 6px' }}>
+        <StatBlock label="ENTITIES" value={entityCount} />
+        <Divider />
+        <StatBlock label="DEVS" value={devCount} />
+        <Divider />
+        <StatBlock
+          label="CONFLICTS"
+          value={conflictCount}
+          warn={conflictCount > 0}
+        />
       </div>
 
       {/* Mode toggle */}
       <div
-        className="flex items-center gap-3 px-5"
-        style={{ borderLeft: '1px solid var(--color-cb-border)', height: '100%' }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '0 18px',
+          borderLeft: '1px solid var(--color-border)',
+          height: '100%',
+          flexShrink: 0,
+        }}
       >
-        <span className="font-ui" style={{ fontSize: 12, color: 'var(--color-cb-muted)' }}>
-          Agent mode
+        <span style={{ ...M, fontSize: 10, letterSpacing: '0.08em', color: 'var(--color-text-3)' }}>
+          MODE
         </span>
         <ModeToggle mode={mode} onToggle={onModeToggle} />
       </div>
@@ -57,67 +78,99 @@ export function TopBar({ connected, entityCount, conflictCount, devCount, mode, 
   )
 }
 
-function LogoMark() {
+function HexIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
-      <circle cx="10" cy="10" r="9" stroke="var(--color-cb-accent)" strokeWidth="1.5" opacity="0.3" />
-      <circle cx="10" cy="10" r="4" fill="var(--color-cb-accent)" opacity="0.9" />
-      <line x1="10" y1="1" x2="10" y2="5.5" stroke="var(--color-cb-accent)" strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="10" y1="14.5" x2="10" y2="19" stroke="var(--color-cb-accent)" strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="1" y1="10" x2="5.5" y2="10" stroke="var(--color-cb-accent)" strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="14.5" y1="10" x2="19" y2="10" stroke="var(--color-cb-accent)" strokeWidth="1.5" strokeLinecap="round" />
+      <polygon
+        points="10,1.5 17.9,5.75 17.9,14.25 10,18.5 2.1,14.25 2.1,5.75"
+        fill="none"
+        stroke="var(--color-amber)"
+        strokeWidth="1.3"
+        opacity="0.65"
+      />
+      <polygon
+        points="10,5.5 14.6,8 14.6,13 10,15.5 5.4,13 5.4,8"
+        fill="var(--color-amber)"
+        opacity="0.18"
+      />
+      <circle cx="10" cy="10" r="2" fill="var(--color-amber)" opacity="0.9" />
     </svg>
   )
 }
 
-function LiveChip({ connected }: { connected: boolean }) {
+function LiveBadge({ connected }: { connected: boolean }) {
   return (
     <div
-      className="flex items-center gap-1.5 px-2 py-1 rounded-full"
       style={{
-        background: connected ? 'var(--color-cb-green-dim)' : 'transparent',
-        border: `1px solid ${connected ? 'oklch(71% 0.17 153 / 0.2)' : 'var(--color-cb-border)'}`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 5,
+        padding: '2px 8px',
+        borderRadius: 3,
+        background: connected ? 'rgba(33,212,253,0.07)' : 'transparent',
+        border: `1px solid ${connected ? 'rgba(33,212,253,0.22)' : 'var(--color-border)'}`,
       }}
     >
       <span
         className={connected ? 'animate-live-pulse' : ''}
         style={{
           display: 'block',
-          width: 6,
-          height: 6,
+          width: 5,
+          height: 5,
           borderRadius: '50%',
-          background: connected ? 'var(--color-cb-green)' : 'var(--color-cb-dim)',
+          background: connected ? 'var(--color-cyan)' : 'var(--color-text-3)',
+          flexShrink: 0,
         }}
       />
       <span
-        className="font-mono"
-        style={{ fontSize: 10, color: connected ? 'var(--color-cb-green)' : 'var(--color-cb-dim)', letterSpacing: '0.04em' }}
+        style={{
+          ...M,
+          fontSize: 10,
+          fontWeight: 500,
+          letterSpacing: '0.1em',
+          color: connected ? 'var(--color-cyan)' : 'var(--color-text-3)',
+        }}
       >
-        {connected ? 'live' : 'offline'}
+        {connected ? 'LIVE' : 'OFF'}
       </span>
     </div>
   )
 }
 
-function Stat({ label, value, danger }: { label: string; value: number; danger?: boolean }) {
+function StatBlock({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
   return (
-    <div className="flex items-baseline gap-2 px-4">
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, padding: '0 18px' }}>
       <span
-        className="font-ui tabular-nums"
-        style={{ fontSize: 22, fontWeight: 600, color: danger ? 'var(--color-cb-red)' : 'var(--color-cb-text)', letterSpacing: '-0.02em', lineHeight: 1 }}
+        style={{
+          ...M,
+          fontSize: 10,
+          color: 'var(--color-text-3)',
+          letterSpacing: '0.07em',
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          ...M,
+          fontSize: 22,
+          fontWeight: 600,
+          letterSpacing: '-0.02em',
+          lineHeight: 1,
+          color: warn ? 'var(--color-red)' : 'var(--color-amber)',
+          transition: 'color 0.25s',
+          tabularNums: true,
+        } as React.CSSProperties}
       >
         {value}
       </span>
-      <span className="font-ui" style={{ fontSize: 12, color: 'var(--color-cb-muted)' }}>
-        {label}
-      </span>
     </div>
   )
 }
 
-function StatDivider() {
+function Divider() {
   return (
-    <div style={{ width: 1, height: 20, background: 'var(--color-cb-border)', margin: '0 4px' }} />
+    <div style={{ width: 1, height: 18, background: 'var(--color-border)', flexShrink: 0 }} />
   )
 }
 
@@ -125,34 +178,38 @@ function ModeToggle({ mode, onToggle }: { mode: AgentMode; onToggle: () => void 
   return (
     <button
       onClick={onToggle}
-      className="flex items-center rounded-lg overflow-hidden"
-      style={{
-        border: '1px solid var(--color-cb-border)',
-        background: 'var(--color-raised)',
-        padding: 3,
-        gap: 2,
-        cursor: 'pointer',
-      }}
       title={`Switch to ${mode === 'smart' ? 'dumb' : 'smart'} mode`}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 2,
+        background: 'var(--color-raised)',
+        border: '1px solid var(--color-border-hi)',
+        borderRadius: 4,
+        padding: 3,
+        cursor: 'pointer',
+        fontFamily: 'var(--font-mono)',
+      }}
     >
-      <TogglePill label="Smart" active={mode === 'smart'} activeColor="var(--color-cb-green)" />
-      <TogglePill label="Dumb" active={mode === 'dumb'} activeColor="var(--color-cb-red)" />
+      <Pill label="SMART" active={mode === 'smart'} activeColor="var(--color-cyan)" />
+      <Pill label="DUMB"  active={mode === 'dumb'}  activeColor="var(--color-red)"  />
     </button>
   )
 }
 
-function TogglePill({ label, active, activeColor }: { label: string; active: boolean; activeColor: string }) {
+function Pill({ label, active, activeColor }: { label: string; active: boolean; activeColor: string }) {
   return (
     <span
-      className="font-ui"
       style={{
         padding: '3px 10px',
-        borderRadius: 6,
-        fontSize: 12,
+        borderRadius: 3,
+        fontSize: 10,
         fontWeight: 500,
+        letterSpacing: '0.07em',
         background: active ? activeColor : 'transparent',
-        color: active ? (label === 'Smart' ? '#0d0c0b' : '#fff') : 'var(--color-cb-muted)',
+        color: active ? '#060a11' : 'var(--color-text-3)',
         transition: 'background 0.15s, color 0.15s',
+        fontFamily: 'var(--font-mono)',
       }}
     >
       {label}

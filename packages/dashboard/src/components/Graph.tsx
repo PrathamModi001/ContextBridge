@@ -1,37 +1,39 @@
 import { useEffect, useRef, useState } from 'react'
 import * as d3 from 'd3'
 import type { GraphNode, GraphLink, Severity } from '../types'
+import { devColor } from '../utils/devColor'
 
-const NODE_FILL: Record<Severity, string> = {
-  info:     '#3dd68c',
-  warning:  '#f0a400',
-  critical: '#ff4444',
+/* ── Severity → node stroke/fill ── */
+const SEV_STROKE: Record<Severity, string> = {
+  info:     'rgba(91,112,135,0.3)',
+  warning:  '#fd8c5b',
+  critical: '#fc5c5c',
+}
+const SEV_FILL: Record<Severity, string> = {
+  info:     '#0c1020',
+  warning:  '#1c1208',
+  critical: '#1c0808',
 }
 
-const NODE_STROKE: Record<Severity, string> = {
-  info:     '#2ab570',
-  warning:  '#c88600',
-  critical: '#cc2222',
+/* ── Kind → Greek symbol ── */
+const KIND_GLYPH: Record<string, string> = {
+  function:  'λ',
+  type:      'τ',
+  interface: 'ι',
+  class:     'κ',
 }
 
-const KIND_SYMBOL: Record<string, string> = {
-  function:  'fn',
-  type:      'T',
-  interface: 'I',
-  class:     'C',
-}
-
-function nodeRadius(n: GraphNode) { return Math.min(10 + n.dependentsCount * 2.5, 26) }
-function srcNode(d: GraphLink)    { return d.source as GraphNode }
-function tgtNode(d: GraphLink)    { return d.target as GraphNode }
-function linkKey(d: GraphLink) {
+function nodeR(n: GraphNode) { return Math.min(11 + n.dependentsCount * 2.5, 28) }
+function src(d: GraphLink)   { return d.source as GraphNode }
+function tgt(d: GraphLink)   { return d.target as GraphNode }
+function lKey(d: GraphLink) {
   const s = typeof d.source === 'string' ? d.source : (d.source as GraphNode).id
   const t = typeof d.target === 'string' ? d.target : (d.target as GraphNode).id
   return `${s}→${t}`
 }
 
-interface Tooltip { x: number; y: number; node: GraphNode }
-interface Props { nodes: GraphNode[]; links: GraphLink[] }
+interface TipState { x: number; y: number; node: GraphNode }
+interface Props    { nodes: GraphNode[]; links: GraphLink[] }
 
 export function Graph({ nodes, links }: Props) {
   const svgRef  = useRef<SVGSVGElement>(null)
@@ -40,9 +42,9 @@ export function Graph({ nodes, links }: Props) {
   const ngRef   = useRef<SVGGElement | null>(null)
   const sNodes  = useRef<GraphNode[]>([])
   const sLinks  = useRef<GraphLink[]>([])
-  const [tooltip, setTooltip] = useState<Tooltip | null>(null)
+  const [tip, setTip] = useState<TipState | null>(null)
 
-  /* ── Init SVG ── */
+  /* ── Build SVG once ── */
   useEffect(() => {
     if (!svgRef.current) return
     const svg = d3.select(svgRef.current)
@@ -51,43 +53,47 @@ export function Graph({ nodes, links }: Props) {
 
     const defs = svg.append('defs')
 
-    /* warm dot-grid background */
-    const pat = defs.append('pattern')
-      .attr('id', 'cb-dots').attr('width', 28).attr('height', 28)
+    /* Crosshatch grid */
+    const grid = defs.append('pattern')
+      .attr('id', 'cb-grid').attr('width', 40).attr('height', 40)
       .attr('patternUnits', 'userSpaceOnUse')
-    pat.append('circle').attr('cx', 14).attr('cy', 14).attr('r', 0.75)
-      .attr('fill', '#2c2924').attr('opacity', 0.7)
+    grid.append('path')
+      .attr('d', 'M 40 0 L 0 0 0 40')
+      .attr('fill', 'none')
+      .attr('stroke', 'rgba(51,65,85,0.22)')
+      .attr('stroke-width', '0.5')
 
     svg.append('rect').attr('width', '100%').attr('height', '100%')
-      .attr('fill', 'url(#cb-dots)')
+      .attr('fill', 'url(#cb-grid)')
 
-    /* conflict glow filter */
-    const cf = defs.append('filter').attr('id', 'conflict-glow')
+    /* Critical glow filter */
+    const glowF = defs.append('filter').attr('id', 'cb-glow')
       .attr('x', '-80%').attr('y', '-80%').attr('width', '260%').attr('height', '260%')
-    cf.append('feGaussianBlur').attr('stdDeviation', 5).attr('result', 'blur')
-    const cm = cf.append('feMerge')
-    cm.append('feMergeNode').attr('in', 'blur')
-    cm.append('feMergeNode').attr('in', 'SourceGraphic')
+    glowF.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'blur')
+    const mg = glowF.append('feMerge')
+    mg.append('feMergeNode').attr('in', 'blur')
+    mg.append('feMergeNode').attr('in', 'SourceGraphic')
 
-    /* arrowhead marker */
+    /* Arrow — normal */
     defs.append('marker')
-      .attr('id', 'arrow').attr('viewBox', '0 -4 8 8')
-      .attr('refX', 14).attr('refY', 0)
-      .attr('markerWidth', 5).attr('markerHeight', 5)
-      .attr('orient', 'auto')
-      .append('path').attr('d', 'M0,-4L8,0L0,4').attr('fill', '#3d3933').attr('opacity', 0.6)
+      .attr('id', 'arr').attr('viewBox', '0 -4 8 8')
+      .attr('refX', 18).attr('refY', 0)
+      .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient', 'auto')
+      .append('path').attr('d', 'M0,-4L8,0L0,4')
+      .attr('fill', 'rgba(51,65,85,0.55)')
 
+    /* Arrow — conflict */
     defs.append('marker')
-      .attr('id', 'arrow-conflict').attr('viewBox', '0 -4 8 8')
-      .attr('refX', 14).attr('refY', 0)
-      .attr('markerWidth', 5).attr('markerHeight', 5)
-      .attr('orient', 'auto')
-      .append('path').attr('d', 'M0,-4L8,0L0,4').attr('fill', '#ff4444').attr('opacity', 0.7)
+      .attr('id', 'arr-c').attr('viewBox', '0 -4 8 8')
+      .attr('refX', 18).attr('refY', 0)
+      .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient', 'auto')
+      .append('path').attr('d', 'M0,-4L8,0L0,4')
+      .attr('fill', '#fc5c5c').attr('opacity', '0.8')
 
-    const g = svg.append('g').attr('class', 'zoom-root')
+    const g = svg.append('g').attr('class', 'root')
     svg.call(
       d3.zoom<SVGSVGElement, unknown>()
-        .scaleExtent([0.15, 6])
+        .scaleExtent([0.08, 8])
         .on('zoom', e => g.attr('transform', e.transform))
     )
 
@@ -95,18 +101,15 @@ export function Graph({ nodes, links }: Props) {
     ngRef.current = g.append('g').attr('class', 'nodes').node()
 
     const sim = d3.forceSimulation<GraphNode, GraphLink>()
-      .force('link', d3.forceLink<GraphNode, GraphLink>().id(d => d.id).distance(110).strength(0.35))
-      .force('charge', d3.forceManyBody<GraphNode>().strength(-320))
-      .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collide', d3.forceCollide<GraphNode>().radius(d => nodeRadius(d) + 18))
+      .force('link',    d3.forceLink<GraphNode, GraphLink>().id(d => d.id).distance(125).strength(0.3))
+      .force('charge',  d3.forceManyBody<GraphNode>().strength(-360))
+      .force('center',  d3.forceCenter(width / 2, height / 2))
+      .force('collide', d3.forceCollide<GraphNode>().radius(d => nodeR(d) + 22))
 
     sim.on('tick', () => {
       d3.select(lgRef.current).selectAll<SVGLineElement, GraphLink>('line')
-        .attr('x1', d => srcNode(d).x ?? 0)
-        .attr('y1', d => srcNode(d).y ?? 0)
-        .attr('x2', d => tgtNode(d).x ?? 0)
-        .attr('y2', d => tgtNode(d).y ?? 0)
-
+        .attr('x1', d => src(d).x ?? 0).attr('y1', d => src(d).y ?? 0)
+        .attr('x2', d => tgt(d).x ?? 0).attr('y2', d => tgt(d).y ?? 0)
       d3.select(ngRef.current).selectAll<SVGGElement, GraphNode>('g.cb-node')
         .attr('transform', d => `translate(${d.x ?? 0},${d.y ?? 0})`)
     })
@@ -115,11 +118,9 @@ export function Graph({ nodes, links }: Props) {
     return () => { sim.stop() }
   }, [])
 
-  /* ── Update data ── */
+  /* ── Update on data change ── */
   useEffect(() => {
-    const sim = simRef.current
-    const lg = lgRef.current
-    const ng = ngRef.current
+    const sim = simRef.current, lg = lgRef.current, ng = ngRef.current
     if (!sim || !lg || !ng) return
 
     const byId = new Map(sNodes.current.map(n => [n.id, n]))
@@ -129,25 +130,27 @@ export function Graph({ nodes, links }: Props) {
     })
     sLinks.current = links.map(l => ({ ...l }))
 
-    /* links */
+    /* — Links — */
     const lSel = d3.select(lg).selectAll<SVGLineElement, GraphLink>('line')
-      .data(sLinks.current, linkKey)
+      .data(sLinks.current, lKey)
     lSel.exit().remove()
     lSel.enter().append('line').merge(lSel)
-      .attr('stroke', d => d.conflict ? '#ff4444' : '#3d3933')
-      .attr('stroke-width', d => d.conflict ? 1.5 : 1)
-      .attr('stroke-dasharray', d => d.conflict ? '5 4' : 'none')
-      .attr('opacity', d => d.conflict ? 0.75 : 0.4)
-      .attr('marker-end', d => d.conflict ? 'url(#arrow-conflict)' : 'url(#arrow)')
-      .classed('conflict-link', d => d.conflict)
+      .attr('stroke',            d => d.conflict ? '#fc5c5c' : 'rgba(51,65,85,0.55)')
+      .attr('stroke-width',      d => d.conflict ? 1.5 : 1)
+      .attr('stroke-dasharray',  d => d.conflict ? '5 4' : 'none')
+      .attr('opacity',           d => d.conflict ? 0.8 : 0.55)
+      .attr('marker-end',        d => d.conflict ? 'url(#arr-c)' : 'url(#arr)')
+      .classed('dash-link',      d => d.conflict)
 
-    /* nodes */
+    /* — Nodes — */
     const nSel = d3.select(ng).selectAll<SVGGElement, GraphNode>('g.cb-node')
       .data(sNodes.current, d => d.id)
-    nSel.exit().transition().duration(250).attr('opacity', 0).remove()
+    nSel.exit().transition().duration(200).attr('opacity', 0).remove()
 
     const enter = nSel.enter().append('g')
-      .attr('class', 'cb-node').attr('opacity', 0).style('cursor', 'pointer')
+      .attr('class', 'cb-node')
+      .attr('opacity', 0)
+      .style('cursor', 'pointer')
       .call(
         d3.drag<SVGGElement, GraphNode>()
           .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y })
@@ -155,56 +158,64 @@ export function Graph({ nodes, links }: Props) {
           .on('end',   (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null })
       )
 
-    enter.transition().duration(350).attr('opacity', 1)
+    enter.transition().duration(380).attr('opacity', 1)
 
-    /* outer ring — only for conflict nodes */
-    enter.append('circle').attr('class', 'pulse-ring')
-      .attr('fill', 'none').attr('stroke-width', 1).attr('opacity', 0)
+    /* Dev ownership ring */
+    enter.append('circle').attr('class', 'dev-ring')
+      .attr('fill', 'none').attr('stroke-width', 1.5)
 
-    /* main body */
-    enter.append('circle').attr('class', 'body').attr('stroke-width', 1.5)
+    /* Node body */
+    enter.append('circle').attr('class', 'body')
+      .attr('stroke-width', 1.5)
 
-    /* kind label inside */
-    enter.append('text').attr('class', 'kind-lbl')
-      .attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
-      .attr('font-family', 'JetBrains Mono, monospace').attr('font-weight', '500')
+    /* Kind glyph (Greek letter) */
+    enter.append('text').attr('class', 'glyph')
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'middle')
+      .attr('font-family', 'IBM Plex Mono, monospace')
       .attr('pointer-events', 'none')
 
-    /* name label below */
-    enter.append('text').attr('class', 'name-lbl')
+    /* Name label below node */
+    enter.append('text').attr('class', 'name')
       .attr('text-anchor', 'middle')
-      .attr('font-family', 'DM Sans, sans-serif')
-      .attr('font-size', 11)
-      .attr('fill', '#877f73')
-      .attr('stroke', '#0d0c0b').attr('stroke-width', 3).attr('paint-order', 'stroke')
+      .attr('font-family', 'IBM Plex Mono, monospace')
+      .attr('font-size', 10)
+      .attr('fill', 'rgba(91,112,135,0.85)')
+      .attr('stroke', '#060a11')
+      .attr('stroke-width', 3)
+      .attr('paint-order', 'stroke')
       .attr('pointer-events', 'none')
 
     enter
-      .on('mouseenter', (e, d) => setTooltip({ x: (e as MouseEvent).offsetX, y: (e as MouseEvent).offsetY, node: d }))
-      .on('mousemove',  (e)    => setTooltip(p => p ? { ...p, x: (e as MouseEvent).offsetX, y: (e as MouseEvent).offsetY } : null))
-      .on('mouseleave', ()     => setTooltip(null))
+      .on('mouseenter', (e, d) => setTip({ x: (e as MouseEvent).offsetX, y: (e as MouseEvent).offsetY, node: d }))
+      .on('mousemove',  e     => setTip(p => p ? { ...p, x: (e as MouseEvent).offsetX, y: (e as MouseEvent).offsetY } : null))
+      .on('mouseleave', ()    => setTip(null))
 
     const all = enter.merge(nSel as d3.Selection<SVGGElement, GraphNode, SVGGElement, unknown>)
 
-    all.select<SVGCircleElement>('.pulse-ring')
-      .attr('r', d => nodeRadius(d) + 7)
-      .attr('stroke', d => NODE_FILL[d.severity])
-      .attr('opacity', d => d.severity === 'critical' ? 0.2 : 0)
+    /* Dev ring — color = dev ownership */
+    all.select<SVGCircleElement>('.dev-ring')
+      .attr('r',       d => nodeR(d) + 5)
+      .attr('stroke',  d => devColor(d.devId))
+      .attr('opacity', d => d.severity === 'critical' ? 0.7 : 0.35)
 
+    /* Body — fill tinted by severity, border = severity */
     all.select<SVGCircleElement>('.body')
-      .attr('r', d => nodeRadius(d))
-      .attr('fill', d => NODE_FILL[d.severity])
-      .attr('stroke', d => NODE_STROKE[d.severity])
-      .attr('filter', d => d.severity === 'critical' ? 'url(#conflict-glow)' : 'none')
+      .attr('r',      d => nodeR(d))
+      .attr('fill',   d => SEV_FILL[d.severity])
+      .attr('stroke', d => SEV_STROKE[d.severity])
+      .attr('filter', d => d.severity === 'critical' ? 'url(#cb-glow)' : 'none')
 
-    all.select<SVGTextElement>('.kind-lbl')
-      .attr('font-size', d => Math.max(8, nodeRadius(d) * 0.55))
-      .attr('fill', d => d.severity === 'info' ? '#0d0c0b' : '#fff')
-      .text(d => KIND_SYMBOL[d.kind] ?? '?')
+    /* Greek-letter glyph colored by dev owner */
+    all.select<SVGTextElement>('.glyph')
+      .attr('font-size', d => Math.max(10, nodeR(d) * 0.68))
+      .attr('fill',      d => devColor(d.devId))
+      .attr('opacity',   0.85)
+      .text(d => KIND_GLYPH[d.kind] ?? '?')
 
-    all.select<SVGTextElement>('.name-lbl')
-      .attr('dy', d => nodeRadius(d) + 15)
-      .text(d => d.name.length > 20 ? d.name.slice(0, 18) + '…' : d.name)
+    all.select<SVGTextElement>('.name')
+      .attr('dy', d => nodeR(d) + 16)
+      .text(d => d.name.length > 18 ? d.name.slice(0, 16) + '…' : d.name)
 
     sim.nodes(sNodes.current)
     ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>).links(sLinks.current)
@@ -212,90 +223,176 @@ export function Graph({ nodes, links }: Props) {
   }, [nodes, links])
 
   return (
-    <div className="relative flex-1 overflow-hidden" style={{ background: 'var(--color-base)' }}>
+    <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: 'var(--color-base)' }}>
       {nodes.length === 0 && <EmptyState />}
-      <svg ref={svgRef} className="w-full h-full" />
-      {tooltip && <NodeTooltip {...tooltip} />}
+      <svg ref={svgRef} style={{ width: '100%', height: '100%' }} />
+      {tip && <NodeTooltip tip={tip} />}
     </div>
   )
 }
 
+/* ── Empty state ── */
 function EmptyState() {
   return (
     <div
-      className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none"
-      style={{ opacity: 0.18 }}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 16,
+        pointerEvents: 'none',
+        opacity: 0.2,
+        color: 'var(--color-text-2)',
+      }}
     >
-      <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-        <circle cx="32" cy="32" r="28" stroke="var(--color-cb-text)" strokeWidth="1" />
-        <circle cx="32" cy="32" r="14" stroke="var(--color-cb-text)" strokeWidth="1" strokeDasharray="4 3" />
-        <circle cx="32" cy="32" r="3" fill="var(--color-cb-text)" />
-        <line x1="32" y1="4" x2="32" y2="18" stroke="var(--color-cb-text)" strokeWidth="1" />
-        <line x1="32" y1="46" x2="32" y2="60" stroke="var(--color-cb-text)" strokeWidth="1" />
-        <line x1="4" y1="32" x2="18" y2="32" stroke="var(--color-cb-text)" strokeWidth="1" />
-        <line x1="46" y1="32" x2="60" y2="32" stroke="var(--color-cb-text)" strokeWidth="1" />
+      <svg width="60" height="60" viewBox="0 0 60 60" fill="none">
+        <polygon
+          points="30,4 53,17 53,43 30,56 7,43 7,17"
+          stroke="currentColor" strokeWidth="1"
+        />
+        <polygon
+          points="30,16 42,23 42,37 30,44 18,37 18,23"
+          stroke="currentColor" strokeWidth="1" strokeDasharray="3 2"
+        />
+        <circle cx="30" cy="30" r="3.5" fill="currentColor" />
       </svg>
-      <div className="text-center">
-        <p className="font-ui" style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-cb-text)' }}>
-          Awaiting signals
+      <div style={{ textAlign: 'center', lineHeight: 1.65 }}>
+        <p style={{ fontFamily: 'IBM Plex Mono', fontSize: 12, fontWeight: 500, letterSpacing: '0.06em', marginBottom: 5 }}>
+          AWAITING SIGNAL
         </p>
-        <p className="font-ui" style={{ fontSize: 12, color: 'var(--color-cb-muted)', marginTop: 4 }}>
+        <p style={{ fontFamily: 'IBM Plex Mono', fontSize: 11, opacity: 0.65 }}>
           Start client watchers to populate the graph
+          <span className="animate-blink" style={{ marginLeft: 2 }}>_</span>
         </p>
       </div>
     </div>
   )
 }
 
-function NodeTooltip({ x, y, node }: Tooltip) {
-  const fill = NODE_FILL[node.severity]
+/* ── Tooltip ── */
+function NodeTooltip({ tip }: { tip: TipState }) {
+  const { x, y, node } = tip
+  const color     = devColor(node.devId)
+  const sevColor  = SEV_STROKE[node.severity]
+  const glyph     = KIND_GLYPH[node.kind] ?? '?'
+
   return (
     <div
-      className="cb-tooltip absolute z-10 pointer-events-none animate-slide-in"
+      className="animate-slide-down"
       style={{
-        left: x + 16, top: y - 8,
+        position: 'absolute',
+        left: x + 16,
+        top: Math.max(8, y - 12),
+        zIndex: 10,
+        pointerEvents: 'none',
+        fontFamily: 'IBM Plex Mono, monospace',
         background: 'var(--color-raised)',
-        border: '1px solid var(--color-cb-border-bright)',
-        borderRadius: 10,
-        padding: '10px 12px',
-        maxWidth: 260,
-        boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+        border: '1px solid var(--color-border-hi)',
+        borderTop: `2px solid ${color}`,
+        borderRadius: 7,
+        padding: '12px 14px',
+        maxWidth: 290,
+        boxShadow: '0 12px 40px rgba(0,0,0,0.65), 0 2px 8px rgba(0,0,0,0.4)',
       }}
     >
-      <div className="flex items-center gap-2 mb-1.5">
+      {/* Title row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 9 }}>
         <span
-          className="font-mono shrink-0"
           style={{
-            fontSize: 9, fontWeight: 500,
-            padding: '2px 6px', borderRadius: 4,
-            background: `${fill}18`, color: fill,
+            width: 26,
+            height: 26,
+            borderRadius: 5,
+            background: `${color}15`,
+            border: `1px solid ${color}35`,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 14,
+            color,
+            flexShrink: 0,
           }}
         >
-          {KIND_SYMBOL[node.kind]}
+          {glyph}
         </span>
-        <span className="font-mono" style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-cb-text)' }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', flex: 1 }}>
           {node.name}
         </span>
-        {node.locked && (
-          <span className="font-ui ml-auto" style={{ fontSize: 9, color: 'var(--color-cb-amber)' }}>
-            locked
+        {node.severity !== 'info' && (
+          <span
+            style={{
+              fontSize: 9,
+              letterSpacing: '0.08em',
+              padding: '2px 6px',
+              borderRadius: 3,
+              background: `${sevColor}18`,
+              color: sevColor,
+              flexShrink: 0,
+            }}
+          >
+            {node.severity.toUpperCase()}
           </span>
         )}
       </div>
+
+      {/* Signature */}
       {node.signature && (
-        <p className="font-mono break-all" style={{ fontSize: 10, color: 'var(--color-cb-muted)', lineHeight: 1.5, marginBottom: 6 }}>
+        <div
+          style={{
+            fontSize: 10,
+            color: 'var(--color-text-2)',
+            lineHeight: 1.6,
+            marginBottom: 10,
+            wordBreak: 'break-all',
+            padding: '7px 9px',
+            background: 'var(--color-base)',
+            borderRadius: 4,
+            border: '1px solid var(--color-border)',
+          }}
+        >
           {node.signature}
-        </p>
+        </div>
       )}
-      <div className="flex items-center gap-3">
-        <span className="font-ui" style={{ fontSize: 10, color: 'var(--color-cb-dim)' }}>
-          by {node.devId}
-        </span>
-        {node.dependentsCount > 0 && (
-          <span className="font-ui" style={{ fontSize: 10, color: 'var(--color-cb-muted)' }}>
-            {node.dependentsCount} dependent{node.dependentsCount !== 1 ? 's' : ''}
-          </span>
-        )}
+
+      {/* Meta grid */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 8,
+          borderTop: '1px solid var(--color-border)',
+          paddingTop: 9,
+        }}
+      >
+        <MetaCell label="OWNER"  value={node.devId}                       color={color} />
+        <MetaCell label="DEPS"   value={String(node.dependentsCount)}      />
+        <MetaCell label="FILE"   value={node.file || '—'}                  truncate />
+      </div>
+    </div>
+  )
+}
+
+function MetaCell({ label, value, color, truncate }: {
+  label: string; value: string; color?: string; truncate?: boolean
+}) {
+  return (
+    <div>
+      <div style={{ fontSize: 9, letterSpacing: '0.08em', color: 'var(--color-text-3)', marginBottom: 3 }}>
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 500,
+          color: color ?? 'var(--color-text-2)',
+          overflow: truncate ? 'hidden' : undefined,
+          textOverflow: truncate ? 'ellipsis' : undefined,
+          whiteSpace: truncate ? 'nowrap' : undefined,
+        }}
+      >
+        {value}
       </div>
     </div>
   )

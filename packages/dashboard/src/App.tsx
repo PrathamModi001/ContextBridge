@@ -36,7 +36,7 @@ export function App() {
         <Graph nodes={nodes} links={links} />
         <ConflictFeed conflicts={conflicts} />
       </div>
-      <BottomBar connected={connected} entityCount={nodes.length} conflictCount={conflicts.length} />
+      <BottomBar connected={connected} entityCount={nodes.length} conflictCount={conflicts.length} conflicts={conflicts} />
     </div>
   )
 }

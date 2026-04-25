@@ -1,166 +1,268 @@
 import type { DevStatus } from '../types'
+import { devColor, devInitials } from '../utils/devColor'
 
-const STATUS_COLORS = {
-  online: 'var(--color-cb-green)',
-  idle:   'var(--color-cb-amber)',
-  offline:'var(--color-cb-dim)',
-}
-
-interface Props {
-  devStatuses: Map<string, DevStatus>
-}
+interface Props { devStatuses: Map<string, DevStatus> }
 
 export function DevPanel({ devStatuses }: Props) {
   const devs = [...devStatuses.values()]
-  const onlineCount = devs.filter(d => d.connected).length
+  const online = devs.filter(d => d.connected).length
 
   return (
     <aside
-      className="flex flex-col overflow-hidden shrink-0"
       style={{
-        width: 240,
-        borderRight: '1px solid var(--color-cb-border)',
+        width: 232,
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        borderRight: '1px solid var(--color-border)',
         background: 'var(--color-surface)',
+        overflow: 'hidden',
       }}
     >
-      {/* Header */}
-      <div
-        className="flex items-center justify-between px-4 shrink-0"
-        style={{ height: 44, borderBottom: '1px solid var(--color-cb-border)' }}
-      >
-        <span className="font-ui" style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-cb-text)' }}>
-          Developers
-        </span>
-        <span className="font-mono" style={{ fontSize: 11, color: 'var(--color-cb-muted)' }}>
-          {onlineCount}/{devs.length}
-        </span>
+      <PanelHeader online={online} total={devs.length} />
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
+        {devs.length === 0 ? <EmptyState /> : devs.map(d => <DevCard key={d.devId} dev={d} />)}
       </div>
-
-      {/* Dev list */}
-      <div className="flex-1 overflow-y-auto py-2">
-        {devs.length === 0 ? (
-          <EmptyDevs />
-        ) : (
-          devs.map(dev => <DevCard key={dev.devId} dev={dev} />)
-        )}
-      </div>
-
-      {/* Footer — version */}
-      <div
-        className="flex items-center justify-between px-4 shrink-0"
-        style={{ height: 36, borderTop: '1px solid var(--color-cb-border)' }}
-      >
-        <span className="font-mono" style={{ fontSize: 10, color: 'var(--color-cb-dim)' }}>
-          ContextBridge
-        </span>
-        <span className="font-mono" style={{ fontSize: 10, color: 'var(--color-cb-dim)' }}>
-          v1.0.0
-        </span>
-      </div>
+      <PanelFooter />
     </aside>
   )
 }
 
-function DevCard({ dev }: { dev: DevStatus }) {
-  const isStale = Date.now() - dev.lastHeartbeat > 45_000
-  const statusColor = !dev.connected
-    ? STATUS_COLORS.offline
-    : isStale
-    ? STATUS_COLORS.idle
-    : STATUS_COLORS.online
+function PanelHeader({ online, total }: { online: number; total: number }) {
+  return (
+    <div
+      style={{
+        height: 40,
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 14px',
+        borderBottom: '1px solid var(--color-border)',
+      }}
+    >
+      <span
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10,
+          fontWeight: 500,
+          letterSpacing: '0.1em',
+          color: 'var(--color-text-2)',
+        }}
+      >
+        PRESENCE
+      </span>
+      <span
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 11,
+          color: online > 0 ? 'var(--color-cyan)' : 'var(--color-text-3)',
+        }}
+      >
+        {online}/{total}
+      </span>
+    </div>
+  )
+}
 
-  const statusLabel = !dev.connected ? 'offline' : isStale ? 'idle' : 'online'
+function PanelFooter() {
+  return (
+    <div
+      style={{
+        height: 32,
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        padding: '0 14px',
+        borderTop: '1px solid var(--color-border)',
+      }}
+    >
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--color-text-3)' }}>
+        ContextBridge v1.0.0
+      </span>
+    </div>
+  )
+}
+
+function DevCard({ dev }: { dev: DevStatus }) {
+  const color = devColor(dev.devId)
+  const initials = devInitials(dev.devId)
+  const isStale = Date.now() - dev.lastHeartbeat > 45_000
+  const isOnline = dev.connected && !isStale
+
+  const statusColor = isOnline
+    ? 'var(--color-cyan)'
+    : dev.connected
+    ? 'var(--color-orange)'
+    : 'var(--color-text-3)'
+
+  const statusLabel = isOnline ? 'online' : dev.connected ? 'idle' : 'offline'
+
+  /* Activity bars — filled segments per entity count, max 8 */
+  const MAX = 8
+  const filled = Math.min(dev.entities.length, MAX)
+  const empty  = MAX - filled
 
   return (
     <div
-      className="mx-3 my-1 rounded-lg overflow-hidden"
+      className="animate-slide-in"
       style={{
+        marginBottom: 6,
+        padding: '11px 12px',
+        borderRadius: 6,
         background: 'var(--color-raised)',
-        border: '1px solid var(--color-cb-border)',
+        border: '1px solid var(--color-border)',
+        borderLeft: `2px solid ${isOnline ? color : 'var(--color-border)'}`,
+        transition: 'border-color 0.35s',
       }}
     >
-      {/* Card header */}
-      <div className="flex items-center gap-2.5 px-3 pt-2.5 pb-2">
-        <span
+      {/* Avatar + name + status */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+        <div
           style={{
-            display: 'block',
-            width: 7,
-            height: 7,
-            borderRadius: '50%',
-            background: statusColor,
+            position: 'relative',
+            width: 32,
+            height: 32,
+            borderRadius: 7,
+            background: `${color}16`,
+            border: `1px solid ${color}30`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+            fontWeight: 600,
+            color,
             flexShrink: 0,
-            boxShadow: dev.connected && !isStale ? `0 0 5px ${statusColor}60` : 'none',
           }}
-        />
-        <span
-          className="font-mono flex-1 truncate"
-          style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-cb-text)' }}
         >
-          {dev.devId}
-        </span>
-        <span className="font-ui" style={{ fontSize: 10, color: statusColor }}>
-          {statusLabel}
-        </span>
+          {initials}
+          {/* Status dot */}
+          <span
+            style={{
+              position: 'absolute',
+              bottom: -2,
+              right: -2,
+              width: 9,
+              height: 9,
+              borderRadius: '50%',
+              background: statusColor,
+              border: '1.5px solid var(--color-raised)',
+            }}
+          />
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12,
+                fontWeight: 500,
+                color: 'var(--color-text)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                flex: 1,
+              }}
+            >
+              {dev.devId}
+            </span>
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 9,
+                letterSpacing: '0.06em',
+                color: statusColor,
+                flexShrink: 0,
+              }}
+            >
+              {statusLabel}
+            </span>
+          </div>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--color-text-3)' }}>
+            {dev.entities.length} {dev.entities.length === 1 ? 'entity' : 'entities'}
+          </span>
+        </div>
       </div>
 
-      {/* Last entity */}
-      {dev.lastEntity && (
-        <div
-          className="px-3 py-1.5"
-          style={{ borderTop: '1px solid var(--color-cb-border)' }}
-        >
-          <span className="font-ui" style={{ fontSize: 10, color: 'var(--color-cb-muted)' }}>
-            Last edited
-          </span>
-          <p className="font-mono truncate" style={{ fontSize: 11, color: 'var(--color-cb-accent)', marginTop: 1 }}>
-            {dev.lastEntity}
-          </p>
+      {/* Activity bar */}
+      {dev.entities.length > 0 && (
+        <div style={{ marginTop: 10, display: 'flex', gap: 3 }}>
+          {Array.from({ length: filled }).map((_, i) => (
+            <div
+              key={`f${i}`}
+              style={{
+                height: 3,
+                flex: 1,
+                borderRadius: 2,
+                background: color,
+                opacity: 0.35 + (i / MAX) * 0.65,
+              }}
+            />
+          ))}
+          {Array.from({ length: empty }).map((_, i) => (
+            <div
+              key={`e${i}`}
+              style={{ height: 3, flex: 1, borderRadius: 2, background: 'var(--color-border-hi)' }}
+            />
+          ))}
         </div>
       )}
 
-      {/* Entity badges */}
-      {dev.entities.length > 0 && (
-        <div
-          className="px-3 pb-2.5 pt-1.5 flex flex-wrap gap-1"
-          style={{ borderTop: dev.lastEntity ? '1px solid var(--color-cb-border)' : undefined }}
-        >
-          {dev.entities.slice(0, 6).map(e => (
-            <span
-              key={e}
-              className="font-mono truncate"
-              style={{
-                fontSize: 9,
-                padding: '2px 6px',
-                borderRadius: 4,
-                background: 'var(--color-hover)',
-                color: 'var(--color-cb-muted)',
-                border: '1px solid var(--color-cb-border)',
-                maxWidth: 84,
-              }}
-            >
-              {e}
-            </span>
-          ))}
-          {dev.entities.length > 6 && (
-            <span className="font-ui" style={{ fontSize: 10, color: 'var(--color-cb-dim)', alignSelf: 'center' }}>
-              +{dev.entities.length - 6}
-            </span>
-          )}
+      {/* Last edited entity */}
+      {dev.lastEntity && (
+        <div style={{ marginTop: 9, display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 9,
+              letterSpacing: '0.06em',
+              color: 'var(--color-text-3)',
+              flexShrink: 0,
+            }}
+          >
+            EDITING
+          </span>
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              color,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              flex: 1,
+            }}
+          >
+            {dev.lastEntity}
+          </span>
         </div>
       )}
     </div>
   )
 }
 
-function EmptyDevs() {
+function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center h-40 gap-2">
-      <svg width="28" height="28" viewBox="0 0 28 28" fill="none" opacity="0.2">
-        <circle cx="14" cy="10" r="5" stroke="var(--color-cb-text)" strokeWidth="1.5" />
-        <path d="M4 26c0-5.523 4.477-10 10-10s10 4.477 10 10" stroke="var(--color-cb-text)" strokeWidth="1.5" strokeLinecap="round" />
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: 140,
+        gap: 10,
+        opacity: 0.25,
+        color: 'var(--color-text-2)',
+      }}
+    >
+      <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+        <circle cx="18" cy="13" r="6" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M5 34c0-7.18 5.82-13 13-13s13 5.82 13 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       </svg>
-      <span className="font-ui" style={{ fontSize: 12, color: 'var(--color-cb-dim)', textAlign: 'center', lineHeight: 1.5 }}>
-        No clients connected
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, textAlign: 'center', lineHeight: 1.6 }}>
+        No developers<br />connected
       </span>
     </div>
   )

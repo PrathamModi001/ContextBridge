@@ -1,100 +1,121 @@
 @import "tailwindcss";
 
 @theme {
-  /* Warm near-black base */
-  --color-base:    #0d0c0b;
-  --color-surface: #131210;
-  --color-raised:  #1a1815;
-  --color-hover:   #211f1b;
+  /* ── Backgrounds ── */
+  --color-base:    #060a11;
+  --color-surface: #0b0f1c;
+  --color-raised:  #101728;
+  --color-hover:   #162036;
 
-  /* Borders */
-  --color-cb-border:        #2c2924;
-  --color-cb-border-bright: #3d3933;
+  /* ── Borders ── */
+  --color-border:    rgba(148, 163, 184, 0.07);
+  --color-border-hi: rgba(148, 163, 184, 0.14);
 
-  /* Text hierarchy */
-  --color-cb-text:  #ece7de;
-  --color-cb-muted: #877f73;
-  --color-cb-dim:   #4a4540;
+  /* ── Text hierarchy ── */
+  --color-text:    #dde6f5;
+  --color-text-2:  #5b7087;
+  --color-text-3:  #293a4e;
 
-  /* Accent — warm orange */
-  --color-cb-accent:     #ff7b35;
-  --color-cb-accent-dim: oklch(59% 0.18 43 / 0.1);
+  /* ── Amber — primary accent ── */
+  --color-amber:   #f5a623;
+  --color-amber-d: rgba(245, 166, 35, 0.1);
 
-  /* Status colors */
-  --color-cb-green:     #3dd68c;
-  --color-cb-green-dim: oklch(71% 0.17 153 / 0.08);
-  --color-cb-amber:     #f0a400;
-  --color-cb-amber-dim: oklch(72% 0.17 70 / 0.08);
-  --color-cb-red:       #ff4444;
-  --color-cb-red-dim:   oklch(59% 0.22 25 / 0.09);
+  /* ── Cyan — live / healthy ── */
+  --color-cyan:    #21d4fd;
+  --color-cyan-d:  rgba(33, 212, 253, 0.1);
 
-  /* Typography */
-  --font-display: "Syne", sans-serif;
-  --font-ui:      "DM Sans", sans-serif;
-  --font-mono:    "JetBrains Mono", monospace;
+  /* ── Orange — warning ── */
+  --color-orange:  #fd8c5b;
+  --color-orange-d:rgba(253, 140, 91, 0.1);
+
+  /* ── Red — critical ── */
+  --color-red:     #fc5c5c;
+  --color-red-d:   rgba(252, 92, 92, 0.1);
+
+  /* ── Typography ── */
+  --font-sans: "IBM Plex Sans", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
 }
 
 @layer base {
   *, *::before, *::after { box-sizing: border-box; }
   html, body, #root { height: 100%; overflow: hidden; }
+
   body {
     -webkit-font-smoothing: antialiased;
-    font-family: var(--font-ui);
+    font-family: var(--font-sans);
     background: var(--color-base);
-    color: var(--color-cb-text);
+    color: var(--color-text);
   }
 
-  ::-webkit-scrollbar { width: 3px; }
+  /* Subtle scanline CRT texture */
+  #root::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(0, 0, 0, 0.028) 3px,
+      rgba(0, 0, 0, 0.028) 4px
+    );
+  }
+
+  ::-webkit-scrollbar       { width: 3px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--color-cb-border-bright); border-radius: 2px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--color-cb-muted); }
+  ::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.1); border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.2); }
 }
 
 @layer utilities {
-  .font-display { font-family: var(--font-display); }
-  .font-ui      { font-family: var(--font-ui); }
-  .font-mono    { font-family: var(--font-mono); }
+  .font-sans { font-family: var(--font-sans); }
+  .font-mono { font-family: var(--font-mono); }
 }
 
-/* ─── Animations ─── */
+/* ── Keyframes ── */
+
 @keyframes live-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.4; transform: scale(0.75); }
+  50%       { opacity: 0.25; transform: scale(0.65); }
 }
 
-@keyframes dash-march {
-  to { stroke-dashoffset: -20; }
+@keyframes blink-cursor {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
 }
 
-@keyframes slide-in-top {
-  from { opacity: 0; transform: translateY(-8px); }
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes conflict-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0); }
-  40%       { box-shadow: 0 0 0 4px rgba(255, 68, 68, 0.15); }
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
-@keyframes node-appear {
-  from { opacity: 0; transform: scale(0.5); }
-  to   { opacity: 1; transform: scale(1); }
+@keyframes conflict-in {
+  from { opacity: 0; transform: translateX(10px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
-.animate-live-pulse   { animation: live-pulse 1.8s ease-in-out infinite; }
-.animate-slide-in     { animation: slide-in-top 0.18s ease forwards; }
-.animate-conflict     { animation: conflict-pulse 2.4s ease-in-out 3; }
-
-svg line.conflict-link { animation: dash-march 0.6s linear infinite; }
-
-/* ─── Graph custom styles ─── */
-.cb-node-label {
-  font-family: var(--font-ui);
-  font-size: 11px;
-  fill: var(--color-cb-muted);
-  pointer-events: none;
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
 }
 
-.cb-tooltip {
-  font-family: var(--font-ui);
+@keyframes dash-flow {
+  to { stroke-dashoffset: -20; }
 }
+
+/* ── Utility animation classes ── */
+.animate-live-pulse  { animation: live-pulse 1.6s ease-in-out infinite; }
+.animate-blink       { animation: blink-cursor 1s step-end infinite; }
+.animate-slide-down  { animation: slide-down 0.15s ease forwards; }
+.animate-slide-in    { animation: slide-in 0.18s ease forwards; }
+.animate-conflict-in { animation: conflict-in 0.2s ease forwards; }
+
+svg line.dash-link { animation: dash-flow 0.5s linear infinite; }
