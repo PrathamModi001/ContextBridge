@@ -69,7 +69,7 @@ export interface ConflictSession {
 
 export interface Resolution {
   type:        'accepted_a' | 'accepted_b' | 'manual_merge'
-  mergedBody:  string
-  mergedSig:   string
+  mergedBody?: string
+  mergedSig?:  string
   resolvedBy:  string
 }
