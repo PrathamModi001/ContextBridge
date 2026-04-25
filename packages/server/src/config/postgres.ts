@@ -54,6 +54,28 @@ const MIGRATION = `
   ALTER TABLE entity_changes ADD COLUMN IF NOT EXISTS body TEXT;
   ALTER TABLE entity_changes ADD COLUMN IF NOT EXISTS file TEXT;
   ALTER TABLE entity_changes ADD COLUMN IF NOT EXISTS line INT;
+
+  ALTER TABLE conflicts ADD COLUMN IF NOT EXISTS conflict_type       TEXT DEFAULT 'signature_drift';
+  ALTER TABLE conflicts ADD COLUMN IF NOT EXISTS blast_radius        INT  DEFAULT 0;
+  ALTER TABLE conflicts ADD COLUMN IF NOT EXISTS security_sensitive  BOOLEAN DEFAULT false;
+  ALTER TABLE conflicts ADD COLUMN IF NOT EXISTS conflict_session_id UUID;
+  ALTER TABLE conflicts ADD COLUMN IF NOT EXISTS dev_a_body          TEXT;
+  ALTER TABLE conflicts ADD COLUMN IF NOT EXISTS dev_b_body          TEXT;
+  ALTER TABLE conflicts ADD COLUMN IF NOT EXISTS merged_body         TEXT;
+  ALTER TABLE conflicts ADD COLUMN IF NOT EXISTS merged_sig          TEXT;
+  ALTER TABLE conflicts ADD COLUMN IF NOT EXISTS resolution_type     TEXT;
+  ALTER TABLE conflicts ADD COLUMN IF NOT EXISTS resolved_by         TEXT;
+  ALTER TABLE conflicts ADD COLUMN IF NOT EXISTS resolved_at         TIMESTAMPTZ;
+  ALTER TABLE conflicts ADD COLUMN IF NOT EXISTS triggering_change_id UUID;
+
+  CREATE TABLE IF NOT EXISTS stale_writes (
+    id                  UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+    dev_id              TEXT    NOT NULL,
+    entity_name         TEXT    NOT NULL,
+    conflict_session_id UUID,
+    written_at          TIMESTAMPTZ DEFAULT now(),
+    conflict_type       TEXT    NOT NULL
+  );
 `
 
 export async function connectPostgres(): Promise<void> {
