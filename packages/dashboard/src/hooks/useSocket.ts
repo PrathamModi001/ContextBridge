@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { io, Socket } from 'socket.io-client'
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? ''
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3000'
 
 export function useSocket() {
   const [socket, setSocket] = useState<Socket | null>(null)

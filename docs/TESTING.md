@@ -1,779 +1,342 @@
 # ContextBridge — Testing Guide
 
-How to test every layer of the application. For each test, the **Expected Output** section shows exactly what a passing run looks like. Anything that deviates is a failure.
-
----
-
-## Table of Contents
-
-1. [Prerequisites](#1-prerequisites)
-2. [Unit Tests](#2-unit-tests)
-3. [E2E Tests](#3-e2e-tests)
-4. [REST API — Manual Tests](#4-rest-api--manual-tests)
-5. [WebSocket / Real-Time Flow](#5-websocket--real-time-flow)
-6. [Dashboard UI Checklist](#6-dashboard-ui-checklist)
-7. [Input Validation Tests](#7-input-validation-tests)
-8. [Conflict Detection Flow](#8-conflict-detection-flow)
-9. [Agent Mode Test](#9-agent-mode-test)
-10. [Pass / Fail Quick Reference](#10-pass--fail-quick-reference)
+Two AI agents (devA, devB) work on a shared fintech codebase. When devB writes over devA's entity, a conflict fires. The dashboard shows a 3-panel merge editor. Accepted code pushes to both agents' workspaces.
 
 ---
 
 ## 1. Prerequisites
 
-### Required software
-| Software | Minimum version | Check |
+| Software | Version | Check |
 |---|---|---|
-| Node.js | 18 | `node --version` |
-| npm | 9 | `npm --version` |
-| Docker Desktop | any recent | `docker --version` |
-| Docker Compose | v2 | `docker compose version` |
+| Node.js | 20+ | `node --version` |
+| npm | 9+ | `npm --version` |
+| Docker Desktop | any | `docker --version` |
+| GROQ_API_KEY | — | needed for agent LLM calls |
 
-### Start infrastructure (Redis + Postgres)
+### Infrastructure
 
 ```bash
-# From repo root
 docker compose up -d
 ```
 
-**Expected output:**
-```
-[+] Running 3/3
- ✔ Network contextbridge_default  Created
- ✔ Container contextbridge-redis-1     Started
- ✔ Container contextbridge-postgres-1  Started
-```
+Redis on `localhost:6379`, Postgres on `localhost:5433`.
 
-**Verify services are healthy:**
-```bash
-docker compose ps
-```
-Both services must show `running` (not `exited`). If Postgres shows `exited`, check logs:
-```bash
-docker compose logs postgres
-```
+### Environment
 
-> **Port note**: Postgres runs on **5433** (not 5432) to avoid conflicts with any locally-installed Postgres instance. Redis runs on **6379**.
+Copy `.env.example` to `.env` at repo root and fill in:
+
+```
+REDIS_URL=redis://localhost:6379
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5433
+POSTGRES_DB=contextbridge
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+GROQ_API_KEY=gsk_...
+PORT=3000
+CB_SERVER=http://localhost:3000
+VITE_SERVER_URL=http://localhost:3000
+```
 
 ---
 
 ## 2. Unit Tests
 
-Runs all Jest test suites inside `packages/server`.
-
-### Run command
 ```bash
-npm test
+npm test -w packages/server
 ```
 
-### Expected output (passing)
-```
-> jest --runInBand --forceExit
+**Expected:** All tests pass. Look for no `FAIL` blocks.
 
- PASS  src/__tests__/services/conflict.service.test.ts
- PASS  src/__tests__/services/graph.service.test.ts
- PASS  src/__tests__/services/context.service.test.ts
- PASS  src/__tests__/services/audit.service.test.ts
- PASS  src/__tests__/middlewares/validateRequest.test.ts
- PASS  src/__tests__/routes/entity.routes.test.ts
- PASS  src/__tests__/routes/conflict.routes.test.ts
- PASS  src/__tests__/routes/context.routes.test.ts
- PASS  src/__tests__/routes/audit.routes.test.ts
-
-Test Suites: 9 passed, 9 total
-Tests:       247 passed, 247 total
-Snapshots:   0 total
-Time:        ~8s
-```
-
-### What to look for
-- `Tests: 247 passed, 247 total` — all green, nothing skipped
-- No `FAIL` lines
-- No `● Test suite failed to run` (indicates a module import error, not a test failure)
-
-### Failure example
-```
- FAIL  src/__tests__/services/conflict.service.test.ts
-  ● severity is critical when impactCount >= 10
-
-    expect(received).toBe(expected)
-
-    Expected: "critical"
-    Received: "warning"
-```
-→ The severity threshold logic in `conflict.service.ts` is broken.
+The server has unit tests for:
+- `conflict.session.service` — session lifecycle, blast radius, resolve guards
+- `conflict.detector` — `detectConflictType`, `isSecuritySensitive`, auth bypass detection
+- `context.service` — snapshot building
 
 ---
 
-## 3. E2E Tests
+## 3. Start the Full Stack
 
-Spins up a real server, connects three Socket.IO clients (devA, devB, dashboard), and exercises the full stack against live Redis and Postgres.
+Open **4 terminals**:
 
-### Prerequisites
-Docker services **must** be running (see §1). The test uses:
-- Redis at `localhost:6379`
-- Postgres at `localhost:5433`
-
-### Run command
-```bash
-npm run test:e2e
-```
-
-### Expected output (passing — all 12 tests)
-```
-> jest --config jest.e2e.config.js
-
-  Health
-    ✓ GET /v1/health returns 200 (45 ms)
-
-  Entity flow
-    ✓ entity:diff from devA writes state to Redis (312 ms)
-    ✓ GET /v1/entities/:name returns 404 for unknown entity (18 ms)
-
-  Conflict detection
-    ✓ emits conflict:detected when devB modifies devA-owned entity (423 ms)
-
-  Context snapshot
-    ✓ GET /v1/context/snapshot returns JSON with entities (55 ms)
-    ✓ GET /v1/context/snapshot?format=markdown returns text/markdown (38 ms)
-
-  Validate usage
-    ✓ POST /v1/context/validate returns 400 for empty code (22 ms)
-    ✓ POST /v1/context/validate detects stale caller (78 ms)
-
-  Audit trail
-    ✓ GET /v1/audit/entities/:name returns history (34 ms)
-    ✓ GET /v1/audit/recent returns recent changes (28 ms)
-
-  Input validation
-    ✓ entity name longer than 200 chars returns 400 (15 ms)
-    ✓ code longer than 20k chars returns 400 on validate (12 ms)
-
-Test Suites: 1 passed, 1 total
-Tests:       12 passed, 12 total
-Time:        ~6s
-```
-
-### Common E2E failures and fixes
-
-| Error | Cause | Fix |
-|---|---|---|
-| `Missing required env var: REDIS_URL` | env.setup.js not running | Check `jest.e2e.config.js` has `setupFiles` entry |
-| `connect ECONNREFUSED 127.0.0.1:6379` | Redis not running | `docker compose up -d` |
-| `connect ECONNREFUSED 127.0.0.1:5433` | Postgres not running | `docker compose up -d` |
-| `password authentication failed for user "contextbridge"` | Wrong Postgres credentials | Recreate volume: `docker compose down -v && docker compose up -d` |
-| `conflict:detected` test: `conflictEvents.length` is 0 | Socket.IO room join timing | Increase the 100ms sleep in `beforeAll` |
-
----
-
-## 4. REST API — Manual Tests
-
-Start the server first:
+**Terminal 1 — Server**
 ```bash
 npm run dev -w packages/server
-# Server starts at http://localhost:3000
+```
+Expected:
+```
+[server] ContextBridge server running on port 3000
+[server] Redis connected
+[server] PostgreSQL connected
+[server] Migrations applied
 ```
 
-All endpoints are under `/v1`. Use the curl commands below and compare against expected responses.
+**Terminal 2 — Dashboard**
+```bash
+npm run dev -w packages/dashboard
+```
+Expected: Vite dev server at `http://localhost:5174`
+
+**Terminal 3 — devA agent**
+```bash
+npx ts-node packages/agent/src/interactive.ts devA
+```
+Expected:
+```
+╔══════════════════════════════╗
+║  ContextBridge Agent — devA  ║
+╚══════════════════════════════╝
+✓ Connected to server
+✓ Workspace seeded: 10 files (auth.service.ts, account.service.ts, ...)
+devA >
+```
+
+**Terminal 4 — devB agent**
+```bash
+npx ts-node packages/agent/src/interactive.ts devB
+```
 
 ---
 
-### 4.1 Health check
+## 4. Dashboard Initial State
+
+Open `http://localhost:5174`.
+
+**What you should see:**
+- TopBar: `WS` dot **cyan** (connected). Entity count 0. `SMART` mode pill.
+- DevPanel (left): `devA ● ONLINE` and `devB ● ONLINE`
+- Graph (center): empty "AWAITING SIGNAL" state
+- ConflictFeed (right): "No conflicts / System nominal"
+
+---
+
+## 5. SMART Mode Demo — No Conflicts
+
+This shows ContextBridge working correctly. The LLM fetches live context before writing.
+
+**In devA terminal, type:**
+```
+add scope validation to validateToken
+```
+
+**Expected devA terminal output:**
+```
+↳ Fetching context snapshot...
+↳ Sending to LLM (llama-3.3-70b-versatile)...
+↳ Writing: auth.service.ts
+
+✓ EDIT  auth.service.ts
+  validateToken(token: string, requiredScope: string[]): Session | null
+
+↓ entity:diff  validateToken (function)  auth.service.ts
+```
+
+**Expected dashboard:**
+- Graph: `validateToken` node appears with devA's cyan ring
+- DevPanel: devA entity count increments
+
+**In devB terminal, type:**
+```
+add transfer logic calling validateToken
+```
+
+**Expected devB terminal output** (smart mode — LLM sees the updated signature):
+```
+↳ Fetching context snapshot...
+↳ LLM sees validateToken(token: string, requiredScope: string[]): Session | null
+↳ Writing: transaction.service.ts
+
+✓ EDIT  transaction.service.ts
+  transfer(fromAccountId: string, toAccountId: string, amount: number, token: string): Promise<Transaction>
+
+↓ entity:diff  transfer (function)  transaction.service.ts
+```
+
+**No conflict fires** — devB's LLM used the correct signature.
+
+---
+
+## 6. DUMB Mode Demo — Conflict + Merge Editor
+
+This shows the damage when AI agents ignore ContextBridge.
+
+**Step 1:** In the dashboard, click the mode toggle from `SMART` → `DUMB` (turns red).
+
+**Step 2:** In devA terminal, type:
+```
+add scope validation to validateToken
+```
+devA changes `validateToken(token: string)` → `validateToken(token: string, requiredScope: string[])`.
+
+**Step 3:** In devB terminal, type:
+```
+add payment processing that calls validateToken
+```
+
+**Expected devB terminal output** (dumb mode — LLM uses stale signature):
+```
+↳ Writing with STALE context (dumb mode)...
+
+✓ EDIT  payment.service.ts
+
+↓ entity:diff  processPayment (function)  payment.service.ts
+
+⚡ CONFLICT  validateToken  🔒 SECURITY SENSITIVE
+  owner:    devA
+  modifier: devB
+  severity: CRITICAL  (blast radius: N downstream)
+  type:     auth_bypass
+  → resolve at dashboard: http://localhost:5174
+
+  Open conflicts this session: 1  Stale writes: 0
+```
+
+**Expected dashboard:**
+- Graph: `validateToken` node turns **red** with pulsing ring
+- ConflictFeed: new `[CRIT]` entry for `validateToken` with "Resolve →" button
+- DevPanel devB section: **DUMB MODE DAMAGE** box appears showing `1 conflict  ΔN downstream`
+
+**Step 4:** Continue writing in devB — type anything that touches a dependent entity:
+```
+add account freezing that uses validateToken
+```
+
+**Expected devB terminal:**
+```
+⚠ STALE WRITE  freezeAccount written against open conflict
+  blast radius now: 2 downstream functions affected
+  Stale writes this session: 1
+```
+
+Dashboard blast radius counter updates live.
+
+---
+
+## 7. Resolve a Conflict via Merge Editor
+
+**Method A — Click conflict node in graph:**
+Click the red pulsing `validateToken` node.
+
+**Method B — Click "Resolve →" in ConflictFeed.**
+
+**Expected:** 3-panel merge editor opens:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ⚡ CONFLICT  validateToken  [🔒 AUTH BYPASS]  [🔒 AUTH SENSITIVE] │
+│  blast radius: 2 downstream                              ×  │
+├──────────────────┬──────────────────┬──────────────────────┤
+│  devA (owner)    │  MERGED RESULT   │  devB (incoming)     │
+│  ──────────────  │  (editable)      │  ──────────────────  │
+│  [full code]     │  [textarea]      │  [full code]         │
+│                  │                  │                        │
+│  [Accept A →]    │                  │  [← Accept B]         │
+├──────────────────┴──────────────────┴──────────────────────┤
+│                              [Accept Merged Version]        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**To resolve:**
+
+**Option A — Accept devA's version (recommended for auth_bypass):**
+Click `Accept A →`.
+
+**Option B — Accept devB's version:**
+Click `← Accept B`.
+
+**Option C — Manual merge:**
+Edit the center textarea → click `Accept Merged Version`.
+
+---
+
+## 8. After Resolution
+
+**Expected outcomes:**
+
+**Both agent terminals** show:
+```
+✓ RESOLVED  validateToken — accepted version written to auth.service.ts
+  Remaining open conflicts: 0
+```
+
+**Dashboard:**
+- Graph: `validateToken` node ring goes back to **cyan/normal** (no longer red)
+- ConflictFeed: session removed (or archived)
+- DevPanel devB: DUMB MODE DAMAGE counter resets
+
+**Workspace files:** `workspace-devA/auth.service.ts` and `workspace-devB/auth.service.ts` both contain the accepted version.
+
+---
+
+## 9. REST API Spot Checks
+
+With server running:
 
 ```bash
-curl -s http://localhost:3000/v1/health | jq
-```
+# Open conflict sessions
+curl http://localhost:3000/v1/conflicts/sessions | jq
 
-**Expected (200):**
-```json
-{
-  "status": "ok",
-  "ts": 1714000000000
-}
-```
-`ts` is a Unix millisecond timestamp — any recent number is correct.
+# Get specific session
+curl http://localhost:3000/v1/conflicts/sessions/<id> | jq
 
----
+# Recent conflicts (Redis)
+curl http://localhost:3000/v1/conflicts | jq
 
-### 4.2 Entity — get by name
+# Context snapshot (what smart mode LLM sees)
+curl "http://localhost:3000/v1/context/snapshot?format=markdown"
 
-```bash
-# First seed an entity via the demo client, or use the E2E test which writes one.
-# Assuming 'validateUser' exists:
-curl -s http://localhost:3000/v1/entities/validateUser | jq
-```
-
-**Expected (200):**
-```json
-{
-  "name": "validateUser",
-  "kind": "function",
-  "signature": "validateUser(id: string): Promise<User>",
-  "devId": "devA",
-  "file": "auth.ts",
-  "line": 12,
-  "updatedAt": "2024-04-25T10:00:00.000Z"
-}
-```
-
-**Expected when entity does not exist (404):**
-```json
-{
-  "error": "Entity 'validateUser' not found"
-}
+# Health
+curl http://localhost:3000/v1/health
 ```
 
 ---
 
-### 4.3 Entity — impact count
+## 10. What Means What
 
-```bash
-curl -s http://localhost:3000/v1/entities/validateUser/impact | jq
-```
-
-**Expected (200):**
-```json
-{
-  "entityName": "validateUser",
-  "impactCount": 3
-}
-```
-`impactCount` is the number of other entities that depend on this one. 0 means no dependents.
-
----
-
-### 4.4 Entity — dependents list
-
-```bash
-curl -s http://localhost:3000/v1/entities/validateUser/dependents | jq
-```
-
-**Expected (200):**
-```json
-{
-  "entityName": "validateUser",
-  "dependents": ["loginHandler", "authMiddleware"]
-}
-```
-Empty array `[]` means no dependents tracked yet.
-
----
-
-### 4.5 Entity — who is editing it
-
-```bash
-curl -s http://localhost:3000/v1/entities/validateUser/clients | jq
-```
-
-**Expected (200):**
-```json
-{
-  "entityName": "validateUser",
-  "clients": ["devA"]
-}
-```
-
----
-
-### 4.6 Conflicts — recent list
-
-```bash
-curl -s http://localhost:3000/v1/conflicts | jq
-```
-
-**Expected (200) — empty state:**
-```json
-[]
-```
-
-**Expected (200) — after conflicts have fired:**
-```json
-[
-  {
-    "id": "conflict-1714000000000",
-    "entityName": "validateUser",
-    "devAId": "devA",
-    "devBId": "devB",
-    "oldSig": "validateUser(id: string): Promise<User>",
-    "newSig": "validateUser(id: string, role: string): Promise<User>",
-    "severity": "warning",
-    "impactCount": 1,
-    "timestamp": "2024-04-25T10:00:00.000Z"
-  }
-]
-```
-
-Severity rules:
-- `"info"` — `impactCount` is 0
-- `"warning"` — `impactCount` is 1–9
-- `"critical"` — `impactCount` is 10 or more
-
----
-
-### 4.7 Context snapshot — JSON
-
-```bash
-curl -s http://localhost:3000/v1/context/snapshot | jq
-```
-
-**Expected (200):**
-```json
-{
-  "snapshotAt": "2024-04-25T10:00:00.000Z",
-  "entities": [
-    {
-      "name": "validateUser",
-      "kind": "function",
-      "signature": "validateUser(id: string): Promise<User>",
-      "devId": "devA",
-      "file": "auth.ts",
-      "line": 12
-    }
-  ],
-  "totalEntities": 1
-}
-```
-
----
-
-### 4.8 Context snapshot — Markdown
-
-```bash
-curl -s http://localhost:3000/v1/context/snapshot?format=markdown
-```
-
-**Expected (200, Content-Type: text/markdown):**
-```markdown
-# ContextBridge Snapshot
-
-**Generated**: 2024-04-25T10:00:00.000Z
-**Total entities**: 1
-
-## validateUser
-- **Kind**: function
-- **Developer**: devA
-- **File**: auth.ts:12
-- **Signature**: `validateUser(id: string): Promise<User>`
-```
-
----
-
-### 4.9 Context snapshot — filtered by entity + depth
-
-```bash
-curl -s "http://localhost:3000/v1/context/snapshot?entity=validateUser&depth=2" | jq
-```
-
-**Expected (200):** Same shape as §4.7 but only includes `validateUser` and entities up to 2 dependency hops away.
-
----
-
-### 4.10 Validate code usage
-
-```bash
-curl -s -X POST http://localhost:3000/v1/context/validate \
-  -H "Content-Type: application/json" \
-  -d '{"code": "const result = await validateUser(userId)"}' | jq
-```
-
-**Expected (200) — no conflicts:**
-```json
-{
-  "conflicts": []
-}
-```
-
-**Expected (200) — stale call detected (signature changed):**
-```json
-{
-  "conflicts": [
-    {
-      "entity": "validateUser",
-      "currentSig": "validateUser(id: string, role: string): Promise<User>",
-      "calledWith": "validateUser(userId)",
-      "message": "Signature mismatch: argument count changed"
-    }
-  ]
-}
-```
-
----
-
-### 4.11 Audit — entity history
-
-```bash
-curl -s http://localhost:3000/v1/audit/entities/validateUser | jq
-```
-
-**Expected (200):**
-```json
-[
-  {
-    "id": 1,
-    "entityName": "validateUser",
-    "devId": "devA",
-    "changeType": "update",
-    "oldSignature": null,
-    "newSignature": "validateUser(id: string): Promise<User>",
-    "changedAt": "2024-04-25T10:00:00.000Z"
-  }
-]
-```
-
----
-
-### 4.12 Audit — developer history
-
-```bash
-curl -s http://localhost:3000/v1/audit/devs/devA | jq
-```
-
-**Expected (200):** Array of change records for every entity devA has ever touched.
-
----
-
-### 4.13 Audit — recent changes
-
-```bash
-curl -s http://localhost:3000/v1/audit/recent | jq
-```
-
-**Expected (200):** Array of the 50 most recent changes across all developers, newest first.
-
----
-
-### 4.14 Client — entities for a developer
-
-```bash
-curl -s http://localhost:3000/v1/clients/devA/entities | jq
-```
-
-**Expected (200):**
-```json
-{
-  "devId": "devA",
-  "entities": ["validateUser", "loginHandler"]
-}
-```
-
----
-
-## 5. WebSocket / Real-Time Flow
-
-This tests the live, end-to-end collaborative scenario: two clients editing entities, the dashboard observing.
-
-### Start the full demo stack
-
-```bash
-npm run demo:start
-```
-
-This runs four processes concurrently:
-1. **server** — Express + Socket.IO at `:3000`
-2. **client-a** — devA client, watches `packages/demo/workspace-devA/`
-3. **client-b** — devB client, watches `packages/demo/workspace-devB/`
-4. **dashboard** — Vite dev server at `:5173`
-
-### Expected console output (first 10 seconds)
-
-```
-[server]  ContextBridge server running on port 3000
-[server]  Redis connected
-[server]  Postgres connected
-[client-a] Connected as devA
-[client-a] Watching workspace: packages/demo/workspace-devA
-[client-b] Connected as devB
-[client-b] Watching workspace: packages/demo/workspace-devB
-[dashboard] VITE v5.x ready in 800 ms
-[dashboard]   ➜  Local: http://localhost:5173/
-```
-
-### Open the dashboard
-
-Navigate to `http://localhost:5173` in a browser.
-
-**Expected initial state:**
-- TopBar: `WS` dot is **cyan** (connected), entity count and conflict count are 0, mode is `SMART`
-- DevPanel (left): shows `devA` and `devB` with **online** status, cyan dots
-- Graph (center): shows "AWAITING SIGNAL" empty state with blinking cursor
-- ConflictFeed (right): shows "No conflicts / System nominal"
-- BottomBar: `WS` dot cyan, ticker reads `SYSTEM NOMINAL · NO ACTIVE ENTITIES`
-
-### After seeding fires (within ~3 seconds)
-
-```
-[client-a] entity:diff  validateUser (function)
-[client-a] entity:diff  loginHandler (function)
-[client-b] entity:diff  getUserProfile (function)
-[client-b] entity:diff  updateUserProfile (function)
-```
-
-**Expected dashboard state:**
-- Graph shows nodes for each entity, connected by dependency edges
-- Each node has a colored ring matching the dev's assigned color
-- DevPanel shows entity counts next to each dev name
-- BottomBar shows entity count in the ticker
-
----
-
-## 6. Dashboard UI Checklist
-
-Run `npm run demo:start` and open `http://localhost:5173`. Verify each item visually.
-
-### TopBar
-- [ ] Hex icon (nested hexagons) in amber on far left
-- [ ] "CTX" in muted text + "BRIDGE" in amber
-- [ ] `LIVE` badge with pulsing cyan dot — only visible when connected
-- [ ] Entity count stat block (amber number, `ENTITIES` label)
-- [ ] Conflict count stat block (amber number, `CONFLICTS` label)
-- [ ] Dev count stat block (amber number, `DEVS` label)
-- [ ] Mode toggle: `SMART` shows cyan pill; click to switch to `DUMB` (red pill)
-- [ ] Amber glow line along the bottom edge of the bar
-
-### DevPanel (left sidebar)
-- [ ] Header reads `PRESENCE` and shows `2/2` online count in cyan
-- [ ] Each dev has a colored square avatar (color is unique per dev ID)
-- [ ] Avatar has a small status dot: cyan = online, orange = idle (>45s no heartbeat), grey = offline
-- [ ] Dev name, entity count, status label (`online` / `idle` / `offline`)
-- [ ] Activity bar: 8 segments, filled segments match entity count
-- [ ] `EDITING` label shows last-touched entity name
-- [ ] Footer reads `ContextBridge v1.0.0`
-
-### Graph (center)
-- [ ] Dark background with subtle crosshatch grid
-- [ ] Nodes rendered as circles with:
-  - Outer colored ring (dev ownership color)
-  - Fill and stroke based on severity (none = dim, info = cyan, warn = orange, crit = red)
-  - Greek letter glyph inside: `λ` function, `τ` type, `ι` interface, `κ` class
-  - Entity name label below
-- [ ] Edges (dependency links) drawn as semi-transparent lines between nodes
-- [ ] Nodes draggable — dragging one repositions it; others continue force-simulation
-- [ ] Hovering a node shows a tooltip with: entity name, dev owner (colored), signature, kind, file:line, impact count
-- [ ] Empty state (no entities): nested hexagon SVG + `AWAITING SIGNAL` + blinking cursor
-
-### ConflictFeed (right sidebar)
-- [ ] Header reads `CONFLICT LOG`; red badge shows count when > 0
-- [ ] Each conflict card has:
-  - Left colored border matching severity (cyan info / orange warn / red critical)
-  - `[CRIT]` / `[WARN]` / `[INFO]` badge
-  - Entity name (truncated if long)
-  - Timestamp (HH:MM:SS format)
-  - Two DevChip components (avatar + truncated name) with arrow between them
-  - Δ{n} orange badge when impactCount > 0
-  - Collapsible diff block (click header row to toggle): `-` old sig in red, `+` new sig in green
-- [ ] Clicking a card header collapses/expands the diff block
-- [ ] Empty state: triangle SVG + "No conflicts" + "System nominal"
-
-### BottomBar
-- [ ] `WS` label with cyan dot when connected, grey dot when disconnected
-- [ ] Center: `SYSTEM NOMINAL · MONITORING N ENTITIES` when no conflicts
-- [ ] Center: scrolling ticker when conflicts exist, showing `[CRIT]` / `[WARN]` / `[INFO]` + entity + devA → devB
-- [ ] Ticker loops continuously and scrolls left
-- [ ] Fade gradients on left and right edges of ticker
-- [ ] `CB·1.0` version label on far right
-
----
-
-## 7. Input Validation Tests
-
-All of these should return `400 Bad Request` with an error body. None should return 200 or 500.
-
-```bash
-# Entity name too long (>200 chars)
-curl -s -o /dev/null -w "%{http_code}" \
-  "http://localhost:3000/v1/entities/$(python3 -c 'print("a"*201)')"
-# Expected: 400
-
-# Entity name empty (route won't match, returns 404 — not a validation error)
-curl -s -o /dev/null -w "%{http_code}" \
-  http://localhost:3000/v1/entities/
-# Expected: 404
-
-# Validate with no body
-curl -s -X POST http://localhost:3000/v1/context/validate \
-  -H "Content-Type: application/json" \
-  -d '{}' | jq
-# Expected: 400 {"error": "code field is required..."}
-
-# Validate with empty code string
-curl -s -X POST http://localhost:3000/v1/context/validate \
-  -H "Content-Type: application/json" \
-  -d '{"code": ""}' | jq
-# Expected: 400
-
-# Validate with code too long (>20,000 chars) — PowerShell version:
-# $body = '{"code":"' + ('x' * 20001) + '"}'
-# Invoke-RestMethod -Method POST -Uri http://localhost:3000/v1/context/validate -Body $body -ContentType application/json
-# Expected: 400
-
-# Snapshot with invalid format
-curl -s -o /dev/null -w "%{http_code}" \
-  "http://localhost:3000/v1/context/snapshot?format=xml"
-# Expected: 400
-
-# Snapshot with depth out of range
-curl -s -o /dev/null -w "%{http_code}" \
-  "http://localhost:3000/v1/context/snapshot?depth=99"
-# Expected: 400
-```
-
-**Expected 400 response shape:**
-```json
-{
-  "error": "Validation failed",
-  "details": [
-    { "path": "body.code", "message": "String must contain at most 20000 character(s)" }
-  ]
-}
-```
-
----
-
-## 8. Conflict Detection Flow
-
-Step-by-step walkthrough of the core feature. Best done with the full demo stack running (`npm run demo:start`).
-
-You can also trigger this manually using a Socket.IO REPL (e.g., `wscat` or the browser console on `http://localhost:5173`).
-
-### Step 1 — devA claims an entity
-
-devA emits `entity:diff` with a new entity `authService`:
-
-**In browser console (with the page open at localhost:5173):**
-```javascript
-// This simulates what the client SDK does
-const s = io('http://localhost:3000', { auth: { devId: 'devA' } })
-s.emit('entity:diff', [{
-  name: 'authService',
-  kind: 'function',
-  oldSig: null,
-  newSig: 'authService(token: string): boolean',
-  body: 'function authService(token) { return verify(token) }',
-  file: 'auth.ts',
-  line: 5
-}])
-```
-
-**Expected dashboard state:**
-- New node `authService` appears in the Graph with devA's color ring
-- DevPanel: devA's entity count increments, `EDITING authService` label appears
-- BottomBar counter updates
-
-### Step 2 — devB modifies the same entity
-
-```javascript
-const s2 = io('http://localhost:3000', { auth: { devId: 'devB' } })
-s2.emit('entity:diff', [{
-  name: 'authService',
-  kind: 'function',
-  oldSig: 'authService(token: string): boolean',
-  newSig: 'authService(token: string, options: AuthOptions): boolean',
-  body: 'function authService(token, options) { return verify(token, options) }',
-  file: 'auth.ts',
-  line: 5
-}])
-```
-
-**Expected dashboard state within ~400ms:**
-- ConflictFeed: new `[INFO]` or `[WARN]` card appears at the top for `authService`
-  - devA chip → devB chip with arrow
-  - Diff block: `− authService(token: string): boolean` (red) / `+ authService(token: string, options: AuthOptions): boolean` (green)
-- BottomBar: ticker now scrolls showing this conflict
-- TopBar: conflict count badge increments
-
-### Step 3 — REST API confirms the conflict
-
-```bash
-curl -s http://localhost:3000/v1/conflicts | jq '.[0]'
-```
-
-**Expected:**
-```json
-{
-  "id": "conflict-...",
-  "entityName": "authService",
-  "devAId": "devA",
-  "devBId": "devB",
-  "severity": "info",
-  "impactCount": 0,
-  "oldSig": "authService(token: string): boolean",
-  "newSig": "authService(token: string, options: AuthOptions): boolean"
-}
-```
-
-### Step 4 — Audit trail confirms the change
-
-```bash
-curl -s http://localhost:3000/v1/audit/entities/authService | jq
-```
-
-**Expected:** Array with at least two entries — the original create and the subsequent update.
-
----
-
-## 9. Agent Mode Test
-
-The agent reads the context snapshot and posts analysis back to the server. Requires a valid `GROQ_API_KEY` in your environment.
-
-```bash
-export GROQ_API_KEY=your_key_here
-npm run agent
-```
-
-### Expected output
-
-```
-[agent] Starting ContextBridge agent (mode: smart)
-[agent] Fetching context snapshot from http://localhost:3000/v1/context/snapshot
-[agent] Snapshot received: 4 entities
-[agent] Sending to Groq (llama-3.1-70b-versatile)...
-[agent] Analysis complete. Broadcasting to dashboard.
-```
-
-**Expected dashboard state:** The TopBar mode indicator and any agent annotations the server broadcasts via Socket.IO.
-
-If `GROQ_API_KEY` is missing or invalid, the agent exits immediately with:
-```
-[agent] Error: GROQ_API_KEY not set — exiting
-```
-This is expected behavior when the key is absent.
-
----
-
-## 10. Pass / Fail Quick Reference
-
-### Unit tests
-| What you see | Verdict |
+| Dashboard element | Meaning |
 |---|---|
-| `Tests: 247 passed, 247 total` | ✅ Pass |
-| Any `FAIL` block or `Tests: X failed` | ❌ Fail |
-| `Test suite failed to run` | ❌ Import/config error |
+| Cyan node ring | devA owns this entity |
+| Amber node ring | devB owns this entity |
+| Red pulsing ring | Open conflict on this entity |
+| Node size | Proportional to blast radius |
+| `DUMB MODE DAMAGE` box | devB has active conflicts + downstream breakage |
+| `🔒 SECURITY SENSITIVE` in merge editor | The conflicted function is in the auth path |
+| `auth_bypass` conflict type | devB wrote stale code over an auth function — financial transactions may be unprotected |
+| `blast_cascade` conflict type | devB's write depends on an entity already in conflict |
 
-### E2E tests
-| What you see | Verdict |
-|---|---|
-| `Tests: 12 passed, 12 total` | ✅ Pass |
-| `connect ECONNREFUSED :6379` | ❌ Redis not running |
-| `connect ECONNREFUSED :5433` | ❌ Postgres not running |
-| `password authentication failed` | ❌ Wrong credentials / need `docker compose down -v` |
-| `0 events received` in conflict test | ❌ Socket.IO room join timing issue |
+---
 
-### REST API
-| Response | Verdict |
-|---|---|
-| HTTP 200 + expected JSON shape | ✅ Pass |
-| HTTP 400 for invalid inputs | ✅ Pass (by design) |
-| HTTP 500 or `{"error":"Internal server error"}` | ❌ Fail |
-| HTTP 200 but missing required fields | ❌ Fail |
+## 11. Common Failures
 
-### Dashboard UI
-| What you see | Verdict |
-|---|---|
-| WS dot is cyan | ✅ Connected |
-| WS dot is grey | ❌ Not connected (check server is running on :3000) |
-| Nodes appear when entities are emitted | ✅ Pass |
-| Graph is blank after seeding | ❌ `entity:diff` socket handler or D3 rendering broken |
-| Conflict cards appear after devB edits | ✅ Pass |
-| No conflict card after step 2 of §8 | ❌ Conflict detection or Socket.IO emission broken |
-| Ticker scrolls in BottomBar | ✅ Pass |
-| Ticker frozen or overflowing | ❌ CSS animation (`ticker-scroll`) not applied |
+| Symptom | Cause | Fix |
+|---|---|---|
+| Agent can't start — `GROQ_API_KEY not set` | Missing env var | Add to `.env` |
+| Dashboard WS dot grey | Server not running | Start server first |
+| Graph empty after agent connects | `entity:diff` not emitted | Check agent seed ran: type `ls` in agent terminal |
+| Conflict fires but no merge editor opens | Click on the red node | Or use "Resolve →" button in ConflictFeed |
+| `✓ RESOLVED` shows but file not updated | `file` field was empty on entity | Ensure agents emitted `file` in their `entity:diff` payloads |
+| Build fails on agent | `FINTECH_FILES` import | Check `packages/demo/src/fintech-seed.ts` exists |
+| Postgres migration error | Old schema conflict | `docker compose down -v && docker compose up -d` |
+
+---
+
+## 12. Workspace Layout
+
+```
+workspace-devA/          ← devA's local copy
+  auth.service.ts        ← validateToken, requireScope, createSession, ...
+  account.service.ts     ← getAccount, createAccount, freezeAccount, ...
+  transaction.service.ts ← transfer, deposit, withdraw, ...
+  payment.service.ts     ← chargeCard, refund, validatePaymentMethod, ...
+  fraud.service.ts       ← scoreRisk, flagTransaction, blockAccount, ...
+  kyc.service.ts         ← verifyIdentity, checkCompliance, requireKYC, ...
+  audit.service.ts       ← logTransaction, generateReport, ...
+  notification.service.ts← alertFraud, sendReceipt, ...
+  db.ts                  ← query, transaction, withRetry, ...
+  types.ts               ← Account, Transaction, Payment, Session, ...
+
+workspace-devB/          ← identical initial copy, diverges as devB writes
+  (same files)
+```
+
+**Natural conflict**: devA hardens `validateToken(token)` → `validateToken(token, requiredScope[])`. devB's dumb LLM writes 4 payment functions calling old `validateToken(token)` → auth bypass on financial transactions.

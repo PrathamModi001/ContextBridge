@@ -1,4 +1,9 @@
-import 'dotenv/config'
+import dotenv from 'dotenv'
+import path from 'path'
+
+// __dirname = packages/server/src/config — 4 levels up = repo root
+// dotenv silently ignores missing files (e.g. in Docker where vars are injected directly)
+dotenv.config({ path: path.resolve(__dirname, '../../../../.env') })
 
 function required(key: string): string {
   const val = process.env[key]
@@ -17,5 +22,4 @@ export const env = {
     user: required('POSTGRES_USER'),
     password: required('POSTGRES_PASSWORD'),
   },
-  groqApiKey: process.env.GROQ_API_KEY || '',
 }

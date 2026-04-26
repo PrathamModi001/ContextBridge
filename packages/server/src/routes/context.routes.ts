@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { buildSnapshot, buildMarkdownSnapshot, validateCodeUsage } from '../services/context/context.service'
 import { badRequest } from '../middlewares/errorHandler'
 import { validateRequest } from '../middlewares/validateRequest'
+import { getRedisClient } from '../config/redis'
+import { getIo } from '../socket'
 
 const validateUsageBody = z.object({ code: z.string().min(1).max(20_000) })
 const snapshotQuery = z.object({
@@ -51,7 +53,19 @@ export async function validateUsageHandler(req: Request, res: Response, next: Ne
   }
 }
 
+export async function flushHandler(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const redis = getRedisClient()
+    await redis.del('conflicts:recent')
+    getIo().to('room:dashboard').emit('conflicts:cleared')
+    res.json({ ok: true })
+  } catch (err) {
+    next(err)
+  }
+}
+
 const router = Router()
 router.get('/snapshot', validateRequest({ query: snapshotQuery }), getSnapshotHandler)
 router.post('/validate', validateRequest({ body: validateUsageBody }), validateUsageHandler)
+router.post('/flush', flushHandler)
 export default router
