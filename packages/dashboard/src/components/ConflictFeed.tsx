@@ -8,9 +8,12 @@ const SEV: Record<Severity, { label: string; color: string; bg: string }> = {
   critical: { label: 'CRIT', color: 'var(--color-red)',    bg: 'rgba(252,92,92,0.09)'   },
 }
 
-interface Props { conflicts: ConflictEvent[] }
+interface Props {
+  conflicts:  ConflictEvent[]
+  onResolve?: (entityName: string) => void
+}
 
-export function ConflictFeed({ conflicts }: Props) {
+export function ConflictFeed({ conflicts, onResolve }: Props) {
   return (
     <aside
       style={{
@@ -27,7 +30,7 @@ export function ConflictFeed({ conflicts }: Props) {
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {conflicts.length === 0
           ? <EmptyFeed />
-          : conflicts.map(c => <LogEntry key={c.id} conflict={c} />)
+          : conflicts.map(c => <LogEntry key={c.id} conflict={c} onResolve={onResolve} />)
         }
       </div>
     </aside>
@@ -77,7 +80,7 @@ function FeedHeader({ count }: { count: number }) {
   )
 }
 
-function LogEntry({ conflict }: { conflict: ConflictEvent }) {
+function LogEntry({ conflict, onResolve }: { conflict: ConflictEvent; onResolve?: (entityName: string) => void }) {
   const [open, setOpen] = useState(true)
   const sev    = SEV[conflict.severity]
   const colorA = devColor(conflict.devAId)
@@ -147,6 +150,23 @@ function LogEntry({ conflict }: { conflict: ConflictEvent }) {
       {/* Diff block */}
       {open && (conflict.oldSig || conflict.newSig) && (
         <DiffBlock old={conflict.oldSig} next={conflict.newSig} />
+      )}
+
+      {/* Resolve button */}
+      {onResolve && (
+        <div style={{ padding: '0 10px 8px', display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => onResolve(conflict.entityName)}
+            style={{
+              background: 'rgba(252,92,92,0.1)', border: '1px solid rgba(252,92,92,0.25)',
+              borderRadius: 4, padding: '4px 10px',
+              fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 600,
+              color: '#fc5c5c', cursor: 'pointer',
+            }}
+          >
+            Resolve →
+          </button>
+        </div>
       )}
     </div>
   )
