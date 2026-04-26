@@ -12,6 +12,7 @@ export interface GraphNode {
   severity: Severity
   locked: boolean
   dependentsCount: number
+  conflictSessionId?: string
   /* D3 simulation fields */
   x?: number
   y?: number
@@ -31,15 +32,15 @@ export interface GraphLink {
 }
 
 export interface ConflictEvent {
-  id: string
+  id:         string
   entityName: string
-  severity: Severity
-  devAId: string
-  devBId: string
-  oldSig: string
-  newSig: string
+  severity:   Severity
+  devAId:     string
+  devBId:     string
+  oldSig:     string
+  newSig:     string
   impactCount: number
-  timestamp: string
+  timestamp:  string
 }
 
 export interface DevStatus {
@@ -68,4 +69,43 @@ export interface ConflictPayload {
   oldSig: string
   newSig: string
   impactCount: number
+}
+
+export type ConflictType =
+  | 'signature_drift'
+  | 'ghost_call'
+  | 'auth_bypass'
+  | 'type_violation'
+  | 'blast_cascade'
+
+export interface ConflictSession {
+  id:                string
+  entityName:        string
+  devAId:            string
+  devBId:            string
+  devABody:          string
+  devASig:           string
+  devBBody:          string
+  devBSig:           string
+  status:            'open' | 'resolving' | 'resolved'
+  detectedAt:        string
+  blastRadius:       number
+  securitySensitive: boolean
+  conflictType:      ConflictType
+  resolvedBy?:       string
+  resolutionType?:   'accepted_a' | 'accepted_b' | 'manual_merge'
+}
+
+export interface BlastUpdateEvent {
+  sessionId:      string
+  blastRadius:    number
+  newStaleEntity: string
+  devId:          string
+}
+
+export interface ConflictResolvedEvent {
+  sessionId:      string
+  entityName:     string
+  resolutionType: 'accepted_a' | 'accepted_b' | 'manual_merge'
+  resolvedBy:     string
 }
