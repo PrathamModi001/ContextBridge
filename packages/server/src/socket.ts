@@ -31,12 +31,14 @@ export async function handleEntityDiffEvent(
           openSessionId, devId, entity.name,
           detectConflictType(entity.name, session.devASig, entity.newSig, entity.kind),
         )
-        io.to('room:dashboard').emit('conflict:blast:update', {
+        const blastPayload = {
           sessionId:      openSessionId,
           blastRadius,
           newStaleEntity: entity.name,
           devId,
-        })
+        }
+        io.to('room:dashboard').emit('conflict:blast:update', blastPayload)
+        io.to(`room:${devId}`).emit('conflict:blast:update', blastPayload)
       }
     } else {
       /* ── Check for new conflict ── */

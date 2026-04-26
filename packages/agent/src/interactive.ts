@@ -216,7 +216,7 @@ async function main() {
     console.log(`\n${tag('CB', C.red)} Disconnected (${reason})\n`)
   })
 
-  socket.on('conflict:detected', (payload: Record<string, unknown>) => {
+  socket.on('entity:conflict', (payload: Record<string, unknown>) => {
     const sev      = String(payload.severity ?? 'info')
     const sevColor = sev === 'critical' ? C.red : sev === 'warning' ? C.orange : C.cyan
     const impact   = Number(payload.impactCount ?? 0)
@@ -237,9 +237,10 @@ async function main() {
 
   socket.on('conflict:blast:update', (payload: Record<string, unknown>) => {
     staleWriteCount++
+    const blastRadius = Number(payload.blastRadius ?? 0)
     console.log()
     console.log(`${tag('⚠ STALE WRITE', C.amber)} ${C.bold}${String(payload.newStaleEntity)}${C.reset} written against open conflict`)
-    console.log(`  ${C.gray}blast radius now: ${C.bold}${C.red}${payload.blastRadius}${C.reset} ${C.gray}downstream functions affected${C.reset}`)
+    console.log(`  ${C.gray}blast radius now: ${C.bold}${C.red}${blastRadius}${C.reset} ${C.gray}downstream functions affected${C.reset}`)
     console.log(`  ${C.amber}Stale writes this session: ${staleWriteCount}${C.reset}`)
     console.log()
     rl.prompt()
