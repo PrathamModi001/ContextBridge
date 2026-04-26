@@ -55,7 +55,7 @@ export function App() {
         <ConflictMergeEditor
           session={activeSession}
           onClose={() => setActiveSession(null)}
-          onResolved={() => setActiveSession(null)}
+          onResolved={(_sessionId) => setActiveSession(null)}
         />
       )}
     </div>
