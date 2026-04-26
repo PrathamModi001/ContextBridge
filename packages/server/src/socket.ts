@@ -85,6 +85,7 @@ export async function handleEntityDiffEvent(
           blastRadius:       session.blastRadius,
           securitySensitive: session.securitySensitive,
           conflictType:      session.conflictType,
+          detectedAt:        session.detectedAt,
         })
         io.to('room:dashboard').emit('conflict:detected', enriched)
         io.to('room:dashboard').emit('graph:links', [
@@ -198,6 +199,7 @@ async function sendDashboardSnapshot(socket: Socket): Promise<void> {
         blastRadius:       session.blastRadius,
         securitySensitive: session.securitySensitive,
         conflictType:      session.conflictType,
+        detectedAt:        session.detectedAt,
       })
     }
   } catch (err) {

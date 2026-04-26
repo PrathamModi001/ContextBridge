@@ -9,6 +9,7 @@ interface SessionOpenedPayload {
   devABody: string; devBBody: string
   blastRadius: number; securitySensitive: boolean
   conflictType: ConflictSession['conflictType']
+  detectedAt: string
 }
 
 export function useConflictSessions(socket: Socket | null) {
@@ -30,7 +31,7 @@ export function useConflictSessions(socket: Socket | null) {
           devBBody:          data.devBBody,
           devBSig:           data.devBSig,
           status:            'open',
-          detectedAt:        new Date().toISOString(),
+          detectedAt:        data.detectedAt,
           blastRadius:       data.blastRadius,
           securitySensitive: data.securitySensitive,
           conflictType:      data.conflictType,
