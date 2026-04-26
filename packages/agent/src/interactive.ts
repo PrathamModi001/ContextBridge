@@ -4,6 +4,7 @@ import * as path from 'path'
 import { io, type Socket } from 'socket.io-client'
 import Groq from 'groq-sdk'
 import dotenv from 'dotenv'
+import { FINTECH_FILES } from '../../demo/src/fintech-seed'
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') })
 
@@ -72,31 +73,41 @@ async function fetchContext(): Promise<string> {
 
 // ─── LLM ──────────────────────────────────────────────────────────────────────
 function buildSystem(filesText: string, context: string): string {
-  return `You are ${DEV_ID}, a TypeScript developer on a team monitored by ContextBridge.
+  return `You are ${DEV_ID}, a senior TypeScript developer working on a shared codebase monitored by ContextBridge.
 
 === YOUR WORKSPACE FILES ===
 ${filesText}
 
-=== LIVE CODEBASE CONTEXT (entities owned by all developers) ===
+=== LIVE CODEBASE CONTEXT (what other developers currently own) ===
 ${context}
 
-When the user asks you to make a code change, respond in EXACTLY this format — no text before or after:
+You have two modes of response:
 
-ENTITY: <the primary function/class/interface name you modified>
+── MODE 1: CODE TASK ──────────────────────────────────────────────────────────
+Use this when the user asks you to write, modify, add, fix, or refactor code.
+Respond in EXACTLY this format — nothing before or after:
+
+ENTITY: <the single primary function/class/interface/type you changed>
 KIND: <function|class|interface|type>
-FILE: <filename in the workspace, e.g. auth.ts>
-OLD_SIG: <old signature, or null if this is a new entity>
-NEW_SIG: <new complete signature including return type>
+FILE: <the filename you modified, e.g. auth.ts>
+OLD_SIG: <the old signature exactly as it appears, or null if new>
+NEW_SIG: <the complete new signature including return type>
 
 \`\`\`typescript
-<COMPLETE content of the modified file — the WHOLE file, not just the changed part>
+<COMPLETE content of the modified file — the entire file, not just the diff>
 \`\`\`
 
-Rules:
-- Return ONLY the structured format above — no prose, no explanation
-- The code block MUST be the entire file content
-- Do NOT import from files not in the workspace
-- Write clean, valid, idiomatic TypeScript`
+Rules for code responses:
+- ONE entity per response — the one most directly changed by the task
+- The code block must be the full file content
+- Modify ONLY what the user explicitly asked for — do not touch unrelated functions
+- Do NOT import from files that don't exist in the workspace
+- Write clean, idiomatic TypeScript
+
+── MODE 2: CONVERSATION ───────────────────────────────────────────────────────
+Use this when the user is NOT asking for a code change — greetings, questions,
+clarifications, status checks, or anything else.
+Respond in plain natural language. Do NOT output the structured format.`
 }
 
 interface ParsedEdit {
@@ -135,81 +146,8 @@ function writeEdit(edit: ParsedEdit): void {
 
 // ─── Seed ─────────────────────────────────────────────────────────────────────
 function seedWorkspace(): void {
-  const AUTH = `export async function validateUser(id: string): Promise<{ id: string; name: string }> {
-  return { id, name: 'user' }
-}
-
-export async function loginUser(email: string, password: string): Promise<{ token: string } | null> {
-  if (!email || !password) return null
-  return { token: 'jwt-token-placeholder' }
-}
-
-export function hashPassword(password: string): string {
-  return Buffer.from(password).toString('base64')
-}
-
-export type Permission = 'read' | 'write' | 'admin'
-
-export interface AuthConfig {
-  secret: string
-  ttl:    number
-  maxAttempts?: number
-}
-`
-
-  const USER_SVC = `import { validateUser, type Permission } from './auth'
-
-export class UserService {
-  async getUser(id: string) {
-    return validateUser(id)
-  }
-
-  async createUser(email: string, name: string) {
-    return { id: Math.random().toString(36).slice(2), email, name }
-  }
-
-  async updateUser(id: string, data: Partial<{ name: string; email: string }>) {
-    const user = await validateUser(id)
-    return { ...user, ...data }
-  }
-
-  async checkPermission(userId: string, _permission: Permission): Promise<boolean> {
-    const user = await validateUser(userId)
-    return !!user
-  }
-}
-
-export async function getUser(id: string): Promise<{ id: string; name: string }> {
-  return validateUser(id)
-}
-`
-
-  const API = `import { UserService } from './user.service'
-
-const svc = new UserService()
-
-export async function getUserProfile(userId: string) {
-  return svc.getUser(userId)
-}
-
-export async function updateProfile(userId: string, data: { name?: string; email?: string }) {
-  return svc.updateUser(userId, data)
-}
-
-export async function searchUsers(query: string): Promise<{ id: string; name: string }[]> {
-  void query
-  return []
-}
-`
-
-  const FILES: Record<string, string> = {
-    'auth.ts':         AUTH,
-    'user.service.ts': USER_SVC,
-    'api.ts':          API,
-  }
-
   fs.mkdirSync(WORKSPACE, { recursive: true })
-  for (const [name, content] of Object.entries(FILES)) {
+  for (const [name, content] of Object.entries(FINTECH_FILES)) {
     fs.writeFileSync(path.join(WORKSPACE, name), content, 'utf8')
   }
 }
@@ -245,6 +183,8 @@ async function main() {
 
   // ── Socket ─────────────────────────────────────────────────────────────────
   let conflictSound = false
+  let staleWriteCount = 0
+  let openConflicts   = 0
   const socket: Socket = io(SERVER, {
     auth: { devId: DEV_ID },
     reconnection: true,
@@ -259,6 +199,11 @@ async function main() {
     rl.prompt()
   })
 
+  // Keep-alive: emit heartbeat every 10s so dashboard shows "online" not "idle"
+  const heartbeatInterval = setInterval(() => {
+    if (socket.connected) socket.emit('heartbeat', { devId: DEV_ID, ts: Date.now() })
+  }, 10_000)
+
   socket.on('connect_error', () => {
     if (!conflictSound) {
       console.log(`${tag('CB', C.red)} Cannot reach server at ${SERVER} — retrying...`)
@@ -272,15 +217,58 @@ async function main() {
   })
 
   socket.on('conflict:detected', (payload: Record<string, unknown>) => {
-    const sev = String(payload.severity ?? 'info')
+    const sev      = String(payload.severity ?? 'info')
     const sevColor = sev === 'critical' ? C.red : sev === 'warning' ? C.orange : C.cyan
-    const impact = Number(payload.impactCount ?? 0)
+    const impact   = Number(payload.impactCount ?? 0)
+    const isSecure = Boolean(payload.securitySensitive)
+    openConflicts++
     console.log()
-    console.log(`${tag('⚡ CONFLICT', C.red)} ${C.bold}${String(payload.entityName)}${C.reset}`)
-    console.log(`  ${C.gray}owner:${C.reset}    ${DEV_COLOR}${String(payload.devAId)}${C.reset}`)
+    console.log(`${tag('⚡ CONFLICT', C.red)} ${C.bold}${String(payload.entityName)}${C.reset}${isSecure ? ` ${C.red}🔒 SECURITY SENSITIVE${C.reset}` : ''}`)
+    console.log(`  ${C.gray}owner:${C.reset}    ${C.cyan}${String(payload.devAId)}${C.reset}`)
     console.log(`  ${C.gray}modifier:${C.reset} ${C.amber}${String(payload.devBId)}${C.reset}`)
-    console.log(`  ${C.gray}severity:${C.reset} ${sevColor}${C.bold}${sev}${C.reset}${impact > 0 ? `  ${C.gray}(${impact} dependent${impact !== 1 ? 's' : ''} affected)${C.reset}` : ''}`)
-    console.log(`  ${C.gray}→ dashboard: http://localhost:5173${C.reset}`)
+    console.log(`  ${C.gray}severity:${C.reset} ${sevColor}${C.bold}${sev}${C.reset}${impact > 0 ? `  ${C.gray}(blast radius: ${impact} downstream)${C.reset}` : ''}`)
+    console.log(`  ${C.gray}type:${C.reset}     ${String(payload.conflictType ?? 'signature_drift')}`)
+    console.log(`  ${C.gray}→ resolve at dashboard: http://localhost:5174${C.reset}`)
+    console.log()
+    console.log(`  ${C.amber}${C.bold}Open conflicts this session: ${openConflicts}  Stale writes: ${staleWriteCount}${C.reset}`)
+    console.log()
+    rl.prompt()
+  })
+
+  socket.on('conflict:blast:update', (payload: Record<string, unknown>) => {
+    staleWriteCount++
+    console.log()
+    console.log(`${tag('⚠ STALE WRITE', C.amber)} ${C.bold}${String(payload.newStaleEntity)}${C.reset} written against open conflict`)
+    console.log(`  ${C.gray}blast radius now: ${C.bold}${C.red}${payload.blastRadius}${C.reset} ${C.gray}downstream functions affected${C.reset}`)
+    console.log(`  ${C.amber}Stale writes this session: ${staleWriteCount}${C.reset}`)
+    console.log()
+    rl.prompt()
+  })
+
+  socket.on('conflict:accepted', (payload: Record<string, unknown>) => {
+    const entityName = String(payload.entityName)
+    const body       = String(payload.body ?? '')
+    const file       = String(payload.file  ?? '')
+    openConflicts    = Math.max(0, openConflicts - 1)
+
+    if (body && file) {
+      const filePath   = path.resolve(WORKSPACE, file)
+      const boundary   = WORKSPACE.endsWith(path.sep) ? WORKSPACE : WORKSPACE + path.sep
+      if (filePath.startsWith(boundary)) {
+        fs.writeFileSync(filePath, body + '\n', 'utf8')
+        console.log()
+        console.log(`${tag('✓ RESOLVED', C.green)} ${C.bold}${entityName}${C.reset} — accepted version written to ${file}`)
+        socket.emit('entity:diff', [{
+          name: entityName, kind: 'function',
+          oldSig: '', newSig: entityName, body: body.slice(0, 500),
+          file, line: 1,
+        }])
+      }
+    } else {
+      console.log()
+      console.log(`${tag('✓ RESOLVED', C.green)} ${C.bold}${entityName}${C.reset} conflict resolved on server`)
+    }
+    console.log(`  ${C.gray}Remaining open conflicts: ${openConflicts}${C.reset}`)
     console.log()
     rl.prompt()
   })
@@ -297,7 +285,7 @@ async function main() {
     console.log(`${C.gray}  Type a task in plain English, e.g.:${C.reset}`)
     console.log(`${C.gray}  "add email validation to validateUser"${C.reset}`)
     console.log(`${C.gray}  "add rate limiting to loginUser"${C.reset}`)
-    console.log(`${C.gray}  Special: ${C.white}ls${C.gray}  ctx  reset  quit${C.reset}`)
+    console.log(`${C.gray}  Special: ${C.white}ls${C.gray}  ctx  reset  flush  quit${C.reset}`)
     console.log()
   }
 
@@ -333,6 +321,21 @@ async function main() {
       seedWorkspace()
       console.log(`${tag('INIT', C.green)} Workspace reset to initial state\n`)
       printWorkspaceInfo()
+      rl.prompt()
+      return
+    }
+
+    if (cmd === 'flush') {
+      try {
+        const res = await fetch(`${SERVER}/v1/context/flush`, { method: 'POST' })
+        if (res.ok) {
+          console.log(`${tag('FLUSH', C.amber)} Conflict history cleared on server + dashboard\n`)
+        } else {
+          console.log(`${tag('FLUSH', C.red)} Server returned ${res.status}\n`)
+        }
+      } catch {
+        console.log(`${tag('FLUSH', C.red)} Could not reach server\n`)
+      }
       rl.prompt()
       return
     }
@@ -379,16 +382,34 @@ async function main() {
     }
 
     const edit = parseResponse(raw)
+
+    // ── Not a code response — treat as conversation ───────────────────────────
     if (!edit) {
-      console.log(`${tag('LLM', C.red)} Could not parse response — try rephrasing your task`)
-      console.log(`${C.gray}First 300 chars of raw response:${C.reset}`)
-      console.log(C.gray + raw.slice(0, 300) + C.reset + '\n')
+      const looksLikeAttemptedCode = /^ENTITY:/m.test(raw) || /^KIND:/m.test(raw)
+      if (looksLikeAttemptedCode) {
+        console.log(`${tag('LLM', C.red)} Malformed response — missing ENTITY, FILE, or code block`)
+        console.log(`${C.gray}${raw.slice(0, 300)}${C.reset}\n`)
+      } else {
+        console.log()
+        console.log(`${DEV_COLOR}${C.bold}${DEV_ID}:${C.reset} ${raw.trim()}`)
+        console.log()
+      }
       rl.prompt()
       return
     }
 
+    // ── Code edit ─────────────────────────────────────────────────────────────
+    console.log(`${tag('EDIT', C.green)} ${C.white}${C.bold}${edit.entity}${C.reset}  ${C.gray}(${edit.kind})${C.reset}  ${edit.file}`)
+    if (edit.oldSig && edit.oldSig !== edit.newSig) {
+      console.log(`  ${C.red}−${C.reset} ${C.gray}${edit.oldSig}${C.reset}`)
+      console.log(`  ${C.green}+${C.reset} ${edit.newSig}`)
+    } else if (edit.newSig) {
+      console.log(`  ${C.green}+${C.reset} ${edit.newSig}`)
+    }
+
     try {
       writeEdit(edit)
+      console.log(`${tag('FS', C.green)} Written → ${edit.file}`)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.log(`${tag('FS', C.red)} Write failed: ${msg}\n`)
@@ -397,7 +418,7 @@ async function main() {
     }
 
     // ── Emit entity:diff ──────────────────────────────────────────────────────
-    socket.emit('entity:diff', [{
+    const diffPayload = [{
       name:   edit.entity,
       kind:   edit.kind,
       oldSig: edit.oldSig ?? '',
@@ -405,15 +426,8 @@ async function main() {
       body:   edit.code.slice(0, 500),
       file:   edit.file,
       line:   1,
-    }])
-
-    console.log(`${tag('LLM', C.green)} ${C.white}${C.bold}${edit.entity}${C.reset} → ${edit.file}`)
-    if (edit.oldSig) {
-      console.log(`  ${C.red}−${C.reset} ${C.gray}${edit.oldSig}${C.reset}`)
-    }
-    if (edit.newSig) {
-      console.log(`  ${C.green}+${C.reset} ${edit.newSig}`)
-    }
+    }]
+    socket.emit('entity:diff', diffPayload)
     console.log(`${tag('CB', C.cyan)} entity:diff sent  (watching for conflicts...)`)
     console.log()
 
@@ -421,6 +435,7 @@ async function main() {
   })
 
   rl.on('close', () => {
+    clearInterval(heartbeatInterval)
     socket.disconnect()
     process.exit(0)
   })
