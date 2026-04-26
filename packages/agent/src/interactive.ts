@@ -261,7 +261,7 @@ async function main() {
         console.log(`${tag('✓ RESOLVED', C.green)} ${C.bold}${entityName}${C.reset} — accepted version written to ${file}`)
         socket.emit('entity:diff', [{
           name: entityName, kind: 'function',
-          oldSig: '', newSig: entityName, body: body.slice(0, 500),
+          oldSig: '', newSig: entityName, body: body.slice(0, 8000),
           file, line: 1,
         }])
       }
@@ -424,7 +424,7 @@ async function main() {
       kind:   edit.kind,
       oldSig: edit.oldSig ?? '',
       newSig: edit.newSig ?? edit.entity,
-      body:   edit.code.slice(0, 500),
+      body:   edit.code.slice(0, 8000),
       file:   edit.file,
       line:   1,
     }]

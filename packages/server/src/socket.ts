@@ -108,13 +108,16 @@ export async function resolveConflictSession(
   const acceptedBody = session.mergedBody ?? ''
   const acceptedSig  = session.mergedSig  ?? ''
 
+  /* Look up the entity's file path from Redis */
+  const entityFile = await getRedisClient().hget(`entity:${session.entityName}`, 'file') ?? ''
+
   /* Push accepted version to both agents */
   for (const agentDevId of [session.devAId, session.devBId]) {
     io.to(`room:${agentDevId}`).emit('conflict:accepted', {
       entityName: session.entityName,
       body:       acceptedBody,
       sig:        acceptedSig,
-      file:       '',
+      file:       entityFile,
     })
   }
 
@@ -124,12 +127,15 @@ export async function resolveConflictSession(
     resolutionType: resolution.type,
     resolvedBy:     resolution.resolvedBy,
   })
+
+  /* Use Redis fields for accurate kind + file in entity:updated */
+  const entityKind = await getRedisClient().hget(`entity:${session.entityName}`, 'kind') ?? 'function'
   io.to('room:dashboard').emit('entity:updated', {
     name:      session.entityName,
     devId:     resolution.resolvedBy,
     signature: acceptedSig,
-    kind:      'function',
-    file:      '',
+    kind:      entityKind,
+    file:      entityFile,
     severity:  'info' as const,
     locked:    false,
   })

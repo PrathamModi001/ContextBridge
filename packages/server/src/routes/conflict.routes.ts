@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express'
 import { getRedisClient } from '../config/redis'
 import { getOpenSessions, getSession, markResolving } from '../services/conflict/conflict.session.service'
-import { resolveConflictSession } from '../socket'
+import { resolveConflictSession, getIo } from '../socket'
 import { Resolution } from '../types'
 
 export async function getConflictsHandler(_req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -47,6 +47,7 @@ export async function resolveSessionHandler(req: Request, res: Response, next: N
     if (session.status !== 'open') { res.status(409).json({ error: 'Session already resolved or resolving' }); return }
 
     await markResolving(req.params.id, resolvedBy)
+    getIo().to('room:dashboard').emit('conflict:session:resolving', { sessionId: req.params.id, resolvedBy })
     await resolveConflictSession(req.params.id, { type, mergedBody, mergedSig, resolvedBy })
     res.json({ ok: true })
   } catch (err) { next(err) }
