@@ -103,6 +103,19 @@ export function useGraph(socket: Socket | null) {
       }))
     }
 
+    const onClientHeartbeat = ({ devId, ts }: { devId: string; ts: number }) => {
+      setDevStatuses(prev => {
+        const next = new Map(prev)
+        const s = next.get(devId)
+        if (s) next.set(devId, { ...s, lastHeartbeat: ts })
+        return next
+      })
+    }
+
+    const onConflictsCleared = () => {
+      setConflicts([])
+    }
+
     const onClientConnected = ({ devId }: { devId: string }) => {
       if (devId === 'dashboard') return
       setDevStatuses(prev => {
@@ -127,18 +140,38 @@ export function useGraph(socket: Socket | null) {
       })
     }
 
-    socket.on('entity:updated',     onEntityUpdated)
-    socket.on('graph:links',        onGraphLinks)
-    socket.on('conflict:detected',  onConflictDetected)
-    socket.on('client:connected',   onClientConnected)
-    socket.on('client:disconnected', onClientDisconnected)
+    const onSessionOpened = (data: { sessionId: string; entityName: string }) => {
+      setNodes(prev => prev.map(n =>
+        n.name === data.entityName ? { ...n, conflictSessionId: data.sessionId } : n,
+      ))
+    }
+
+    const onConflictResolvedForGraph = (data: { entityName: string }) => {
+      setNodes(prev => prev.map(n =>
+        n.name === data.entityName ? { ...n, conflictSessionId: undefined, severity: 'info' } : n,
+      ))
+    }
+
+    socket.on('entity:updated',           onEntityUpdated)
+    socket.on('graph:links',              onGraphLinks)
+    socket.on('conflict:detected',        onConflictDetected)
+    socket.on('conflicts:cleared',        onConflictsCleared)
+    socket.on('client:connected',         onClientConnected)
+    socket.on('client:disconnected',      onClientDisconnected)
+    socket.on('client:heartbeat',         onClientHeartbeat)
+    socket.on('conflict:session:opened',  onSessionOpened)
+    socket.on('conflict:resolved',        onConflictResolvedForGraph)
 
     return () => {
-      socket.off('entity:updated',     onEntityUpdated)
-      socket.off('graph:links',        onGraphLinks)
-      socket.off('conflict:detected',  onConflictDetected)
-      socket.off('client:connected',   onClientConnected)
-      socket.off('client:disconnected', onClientDisconnected)
+      socket.off('entity:updated',           onEntityUpdated)
+      socket.off('graph:links',              onGraphLinks)
+      socket.off('conflict:detected',        onConflictDetected)
+      socket.off('conflicts:cleared',        onConflictsCleared)
+      socket.off('client:connected',         onClientConnected)
+      socket.off('client:disconnected',      onClientDisconnected)
+      socket.off('client:heartbeat',         onClientHeartbeat)
+      socket.off('conflict:session:opened',  onSessionOpened)
+      socket.off('conflict:resolved',        onConflictResolvedForGraph)
     }
   }, [socket])
 

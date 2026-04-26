@@ -33,9 +33,9 @@ function lKey(d: GraphLink) {
 }
 
 interface TipState { x: number; y: number; node: GraphNode }
-interface Props    { nodes: GraphNode[]; links: GraphLink[] }
+interface Props    { nodes: GraphNode[]; links: GraphLink[]; onNodeClick?: (entityName: string) => void }
 
-export function Graph({ nodes, links }: Props) {
+export function Graph({ nodes, links, onNodeClick }: Props) {
   const svgRef  = useRef<SVGSVGElement>(null)
   const simRef  = useRef<d3.Simulation<GraphNode, GraphLink> | null>(null)
   const lgRef   = useRef<SVGGElement | null>(null)
@@ -101,10 +101,18 @@ export function Graph({ nodes, links }: Props) {
     ngRef.current = g.append('g').attr('class', 'nodes').node()
 
     const sim = d3.forceSimulation<GraphNode, GraphLink>()
-      .force('link',    d3.forceLink<GraphNode, GraphLink>().id(d => d.id).distance(125).strength(0.3))
-      .force('charge',  d3.forceManyBody<GraphNode>().strength(-360))
-      .force('center',  d3.forceCenter(width / 2, height / 2))
-      .force('collide', d3.forceCollide<GraphNode>().radius(d => nodeR(d) + 22))
+      .force('link',      d3.forceLink<GraphNode, GraphLink>().id(d => d.id).distance(125).strength(0.3))
+      .force('charge',    d3.forceManyBody<GraphNode>().strength(-360))
+      .force('center',    d3.forceCenter(width / 2, height / 2))
+      .force('collide',   d3.forceCollide<GraphNode>().radius(d => nodeR(d) + 22))
+      .force('cluster-x', d3.forceX<GraphNode>(d => {
+        if (d.severity === 'critical') return width / 2
+        const devIds = ['devA', 'devB']
+        const idx    = devIds.indexOf(d.devId)
+        if (idx === -1) return width / 2
+        return idx === 0 ? width * 0.35 : width * 0.65
+      }).strength(0.06))
+      .force('cluster-y', d3.forceY<GraphNode>(height / 2).strength(0.03))
 
     sim.on('tick', () => {
       d3.select(lgRef.current).selectAll<SVGLineElement, GraphLink>('line')
@@ -190,14 +198,20 @@ export function Graph({ nodes, links }: Props) {
       .on('mouseenter', (e, d) => setTip({ x: (e as MouseEvent).offsetX, y: (e as MouseEvent).offsetY, node: d }))
       .on('mousemove',  e     => setTip(p => p ? { ...p, x: (e as MouseEvent).offsetX, y: (e as MouseEvent).offsetY } : null))
       .on('mouseleave', ()    => setTip(null))
+      .on('click', (_e, d) => {
+        if (onNodeClick) onNodeClick(d.name)
+      })
 
     const all = enter.merge(nSel as d3.Selection<SVGGElement, GraphNode, SVGGElement, unknown>)
 
+    all.style('cursor', d => d.conflictSessionId ? 'pointer' : 'grab')
+
     /* Dev ring — color = dev ownership */
     all.select<SVGCircleElement>('.dev-ring')
-      .attr('r',       d => nodeR(d) + 5)
-      .attr('stroke',  d => devColor(d.devId))
-      .attr('opacity', d => d.severity === 'critical' ? 0.7 : 0.35)
+      .attr('r',            d => nodeR(d) + 5)
+      .attr('stroke',       d => d.conflictSessionId ? '#fc5c5c' : devColor(d.devId))
+      .attr('opacity',      d => d.conflictSessionId ? 0.9 : d.severity === 'critical' ? 0.7 : 0.35)
+      .attr('stroke-width', d => d.conflictSessionId ? 2 : 1.5)
 
     /* Body — fill tinted by severity, border = severity */
     all.select<SVGCircleElement>('.body')

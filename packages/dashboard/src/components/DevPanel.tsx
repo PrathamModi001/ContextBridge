@@ -1,9 +1,12 @@
 import type { DevStatus } from '../types'
 import { devColor, devInitials } from '../utils/devColor'
 
-interface Props { devStatuses: Map<string, DevStatus> }
+interface Props {
+  devStatuses: Map<string, DevStatus>
+  getDamageStats: (devId: string) => { openConflicts: number; totalBlastRadius: number }
+}
 
-export function DevPanel({ devStatuses }: Props) {
+export function DevPanel({ devStatuses, getDamageStats }: Props) {
   const devs = [...devStatuses.values()]
   const online = devs.filter(d => d.connected).length
 
@@ -21,7 +24,7 @@ export function DevPanel({ devStatuses }: Props) {
     >
       <PanelHeader online={online} total={devs.length} />
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
-        {devs.length === 0 ? <EmptyState /> : devs.map(d => <DevCard key={d.devId} dev={d} />)}
+        {devs.length === 0 ? <EmptyState /> : devs.map(d => <DevCard key={d.devId} dev={d} getDamageStats={getDamageStats} />)}
       </div>
       <PanelFooter />
     </aside>
@@ -84,7 +87,7 @@ function PanelFooter() {
   )
 }
 
-function DevCard({ dev }: { dev: DevStatus }) {
+function DevCard({ dev, getDamageStats }: { dev: DevStatus; getDamageStats: (devId: string) => { openConflicts: number; totalBlastRadius: number } }) {
   const color = devColor(dev.devId)
   const initials = devInitials(dev.devId)
   const isStale = Date.now() - dev.lastHeartbeat > 45_000
@@ -239,6 +242,32 @@ function DevCard({ dev }: { dev: DevStatus }) {
           </span>
         </div>
       )}
+
+      {/* Damage counter */}
+      {(() => {
+        const damage = getDamageStats(dev.devId)
+        return (damage.openConflicts > 0 || damage.totalBlastRadius > 0) && (
+          <div style={{
+            marginTop: 6, padding: '5px 8px',
+            background: 'rgba(252,92,92,0.07)',
+            border: '1px solid rgba(252,92,92,0.18)',
+            borderRadius: 4,
+            fontFamily: 'var(--font-mono)',
+          }}>
+            <div style={{ fontSize: 9, color: 'var(--color-text-3)', letterSpacing: '0.08em', marginBottom: 4 }}>
+              DUMB MODE DAMAGE
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <span style={{ fontSize: 10, color: '#fc5c5c' }}>
+                {damage.openConflicts} conflict{damage.openConflicts !== 1 ? 's' : ''}
+              </span>
+              <span style={{ fontSize: 10, color: '#fd8c5b' }}>
+                Δ{damage.totalBlastRadius} downstream
+              </span>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

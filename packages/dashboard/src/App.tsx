@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useSocket } from './hooks/useSocket'
 import { useGraph } from './hooks/useGraph'
+import { useConflictSessions } from './hooks/useConflictSessions'
 import { TopBar } from './components/TopBar'
 import { DevPanel } from './components/DevPanel'
 import { Graph } from './components/Graph'
@@ -11,6 +12,7 @@ import type { AgentMode } from './types'
 export function App() {
   const { socket, connected } = useSocket()
   const { nodes, links, conflicts, devStatuses } = useGraph(socket)
+  const { getDamageStats } = useConflictSessions(socket)
   const [mode, setMode] = useState<AgentMode>('smart')
 
   const devCount = [...devStatuses.values()].filter(d => d.connected).length
@@ -32,7 +34,7 @@ export function App() {
         onModeToggle={toggleMode}
       />
       <div className="flex flex-1 overflow-hidden">
-        <DevPanel devStatuses={devStatuses} />
+        <DevPanel devStatuses={devStatuses} getDamageStats={getDamageStats} />
         <Graph nodes={nodes} links={links} />
         <ConflictFeed conflicts={conflicts} />
       </div>
