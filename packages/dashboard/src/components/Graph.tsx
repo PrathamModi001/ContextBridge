@@ -198,13 +198,13 @@ export function Graph({ nodes, links, onNodeClick }: Props) {
       .on('mouseenter', (e, d) => setTip({ x: (e as MouseEvent).offsetX, y: (e as MouseEvent).offsetY, node: d }))
       .on('mousemove',  e     => setTip(p => p ? { ...p, x: (e as MouseEvent).offsetX, y: (e as MouseEvent).offsetY } : null))
       .on('mouseleave', ()    => setTip(null))
-      .on('click', (_e, d) => {
-        if (onNodeClick) onNodeClick(d.name)
-      })
 
     const all = enter.merge(nSel as d3.Selection<SVGGElement, GraphNode, SVGGElement, unknown>)
 
     all.style('cursor', d => d.conflictSessionId ? 'pointer' : 'grab')
+    all.on('click', (_e, d) => {
+      if (onNodeClick) onNodeClick(d.name)
+    })
 
     /* Dev ring — color = dev ownership */
     all.select<SVGCircleElement>('.dev-ring')
@@ -234,7 +234,7 @@ export function Graph({ nodes, links, onNodeClick }: Props) {
     sim.nodes(sNodes.current)
     ;(sim.force('link') as d3.ForceLink<GraphNode, GraphLink>).links(sLinks.current)
     sim.alpha(0.4).restart()
-  }, [nodes, links])
+  }, [nodes, links, onNodeClick])
 
   return (
     <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: 'var(--color-base)' }}>
