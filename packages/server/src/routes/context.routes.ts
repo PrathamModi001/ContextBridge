@@ -56,8 +56,18 @@ export async function validateUsageHandler(req: Request, res: Response, next: Ne
 export async function flushHandler(_req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const redis = getRedisClient()
+
+    // Wipe all entity/lock/client/conflict/grace-period keys
+    const prefixes = ['entity:*', 'lock:*', 'client:*', 'conflict:session:*', 'resolved:*']
+    for (const pattern of prefixes) {
+      const keys = await redis.keys(pattern)
+      if (keys.length > 0) await redis.del(...keys)
+    }
     await redis.del('conflicts:recent')
-    getIo().to('room:dashboard').emit('conflicts:cleared')
+
+    const io = getIo()
+    io.to('room:dashboard').emit('conflicts:cleared')
+    io.to('room:dashboard').emit('flush:complete')   // dashboard can reset nodes/devs
     res.json({ ok: true })
   } catch (err) {
     next(err)
