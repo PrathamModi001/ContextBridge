@@ -62,6 +62,7 @@ export interface EntityUpdateEvent {
 }
 
 export interface ConflictPayload {
+  sessionId?: string
   entityName: string
   severity: Severity
   devAId: string

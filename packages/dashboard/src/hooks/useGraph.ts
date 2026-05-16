@@ -80,7 +80,7 @@ export function useGraph(socket: Socket | null) {
 
     const onConflictDetected = (data: ConflictPayload) => {
       const event: ConflictEvent = {
-        id: `${data.entityName}-${Date.now()}`,
+        id: data.sessionId ?? `${data.entityName}-${Date.now()}`,
         entityName: data.entityName,
         severity: data.severity,
         devAId: data.devAId,
@@ -90,7 +90,10 @@ export function useGraph(socket: Socket | null) {
         impactCount: data.impactCount ?? 0,
         timestamp: new Date().toISOString(),
       }
-      setConflicts(prev => [event, ...prev].slice(0, 50))
+      setConflicts(prev => {
+        if (prev.some(c => c.id === event.id)) return prev
+        return [event, ...prev].slice(0, 50)
+      })
       setNodes(prev => prev.map(n =>
         n.name === data.entityName ? { ...n, severity: data.severity } : n
       ))

@@ -136,7 +136,12 @@ export function Graph({ nodes, links, onNodeClick }: Props) {
       const p = byId.get(n.id)
       return p ? Object.assign(p, n) : { ...n }
     })
-    sLinks.current = links.map(l => ({ ...l }))
+    const nodeIds = new Set(sNodes.current.map(n => n.id))
+    sLinks.current = links.map(l => ({ ...l })).filter(l => {
+      const s = typeof l.source === 'string' ? l.source : (l.source as GraphNode).id
+      const t = typeof l.target === 'string' ? l.target : (l.target as GraphNode).id
+      return nodeIds.has(s) && nodeIds.has(t)
+    })
 
     /* — Links — */
     const lSel = d3.select(lg).selectAll<SVGLineElement, GraphLink>('line')
