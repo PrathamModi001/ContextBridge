@@ -93,6 +93,7 @@ export async function resolveSession(
 
   const session = await getSession(sessionId)
   if (!session) throw new Error(`Session ${sessionId} not found`)
+  if (session.status !== 'resolving') throw new Error(`Session ${sessionId} cannot be resolved from state '${session.status}'`)
 
   const mergedBody = resolution.mergedBody ?? (resolution.type === 'accepted_a' ? session.devABody : session.devBBody)
   const mergedSig  = resolution.mergedSig  ?? (resolution.type === 'accepted_a' ? session.devASig  : session.devBSig)
