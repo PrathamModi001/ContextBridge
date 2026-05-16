@@ -147,6 +147,10 @@ function writeEdit(edit: ParsedEdit): void {
 // ─── Seed ─────────────────────────────────────────────────────────────────────
 function seedWorkspace(): void {
   fs.mkdirSync(WORKSPACE, { recursive: true })
+  // Delete all existing .ts files so LLM-generated extras don't survive reset
+  for (const f of fs.readdirSync(WORKSPACE)) {
+    if (f.endsWith('.ts')) fs.unlinkSync(path.join(WORKSPACE, f))
+  }
   for (const [name, content] of Object.entries(FINTECH_FILES)) {
     fs.writeFileSync(path.join(WORKSPACE, name), content, 'utf8')
   }
