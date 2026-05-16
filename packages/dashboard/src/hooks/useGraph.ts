@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Socket } from 'socket.io-client'
 import type {
   GraphNode, GraphLink, ConflictEvent, DevStatus,
@@ -12,6 +12,7 @@ export function useGraph(socket: Socket | null) {
   const [links, setLinks] = useState<GraphLink[]>([])
   const [conflicts, setConflicts] = useState<ConflictEvent[]>([])
   const [devStatuses, setDevStatuses] = useState<Map<string, DevStatus>>(new Map())
+  const seenConflictIds = useRef(new Set<string>())
 
   useEffect(() => {
     if (!socket) return
@@ -79,8 +80,11 @@ export function useGraph(socket: Socket | null) {
     }
 
     const onConflictDetected = (data: ConflictPayload) => {
+      const id = data.sessionId ?? `${data.entityName}-${data.devAId}-${data.devBId}`
+      if (seenConflictIds.current.has(id)) return
+      seenConflictIds.current.add(id)
       const event: ConflictEvent = {
-        id: data.sessionId ?? `${data.entityName}-${Date.now()}`,
+        id,
         entityName: data.entityName,
         severity: data.severity,
         devAId: data.devAId,
@@ -90,10 +94,7 @@ export function useGraph(socket: Socket | null) {
         impactCount: data.impactCount ?? 0,
         timestamp: new Date().toISOString(),
       }
-      setConflicts(prev => {
-        if (prev.some(c => c.id === event.id)) return prev
-        return [event, ...prev].slice(0, 50)
-      })
+      setConflicts(prev => [event, ...prev].slice(0, 50))
       setNodes(prev => prev.map(n =>
         n.name === data.entityName ? { ...n, severity: data.severity } : n
       ))
@@ -116,6 +117,7 @@ export function useGraph(socket: Socket | null) {
     }
 
     const onConflictsCleared = () => {
+      seenConflictIds.current.clear()
       setConflicts([])
     }
 
@@ -149,10 +151,12 @@ export function useGraph(socket: Socket | null) {
       ))
     }
 
-    const onConflictResolvedForGraph = (data: { entityName: string }) => {
+    const onConflictResolvedForGraph = (data: { sessionId: string; entityName: string }) => {
       setNodes(prev => prev.map(n =>
         n.name === data.entityName ? { ...n, conflictSessionId: undefined, severity: 'info' } : n,
       ))
+      setConflicts(prev => prev.filter(c => c.id !== data.sessionId && c.entityName !== data.entityName))
+      seenConflictIds.current.delete(data.sessionId)
     }
 
     socket.on('entity:updated',           onEntityUpdated)

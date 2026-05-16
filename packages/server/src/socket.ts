@@ -20,7 +20,16 @@ export async function handleEntityDiffEvent(
 ): Promise<void> {
   const redis = getRedisClient()
 
+  const needsDiff: EntityDiffPayload[] = []
+
   for (const entity of payload) {
+    /* ── Skip conflict detection during post-resolution grace period ── */
+    const recentlyResolved = await redis.get(`resolved:${entity.name}`)
+    if (recentlyResolved) {
+      needsDiff.push(entity)
+      continue
+    }
+
     const openSessionId = await entityService.getEntityConflictSession(entity.name)
 
     if (openSessionId) {
@@ -93,9 +102,11 @@ export async function handleEntityDiffEvent(
         ])
       }
     }
+
+    needsDiff.push(entity)
   }
 
-  await entityService.handleDiff(devId, payload)
+  if (needsDiff.length > 0) await entityService.handleDiff(devId, needsDiff)
 }
 
 export async function resolveConflictSession(
@@ -104,6 +115,9 @@ export async function resolveConflictSession(
 ): Promise<void> {
   if (!io) throw new Error('Socket server not initialized')
   const session = await resolveSession(sessionId, resolution)
+  const redis = getRedisClient()
+  await redis.del(`lock:${session.entityName}`)
+  await redis.set(`resolved:${session.entityName}`, '1', 'EX', 10)
 
   const acceptedBody = session.mergedBody ?? ''
   const acceptedSig  = session.mergedSig  ?? ''
