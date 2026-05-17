@@ -13,7 +13,6 @@ const DECLARATION_TYPES = new Set([
 
 export class TSParser {
   private parser: Parser
-  private previousTrees: Map<string, Parser.Tree> = new Map()
 
   constructor() {
     this.parser = new Parser()
@@ -22,16 +21,14 @@ export class TSParser {
   }
 
   parse(filePath: string, source: string): Entity[] {
-    // Full re-parse every time. Passing prevTree without calling tree.edit() produces
-    // wrong byte offsets when source length changes — incremental mode requires explicit edits.
+    // Full re-parse every time. Incremental mode requires tree.edit() calls with
+    // exact byte offsets — not safe to pass prev tree without them.
     const tree = this.parser.parse(source)
-    this.previousTrees.set(filePath, tree)
     return this.extractTopLevel(tree.rootNode, filePath)
   }
 
-  clearCache(filePath: string): void {
-    this.previousTrees.delete(filePath)
-  }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  clearCache(_filePath: string): void { /* no-op: we full-re-parse; kept for pipeline interface */ }
 
   private extractTopLevel(root: Parser.SyntaxNode, file: string): Entity[] {
     const entities: Entity[] = []

@@ -4,21 +4,9 @@ import { db } from '../../config/postgres'
 import { EntityDiffPayload } from '../../types'
 import { createModuleLogger } from '../../logger/logger'
 import { updateDependents, updateClientIndex, updateEntityCalls } from '../graph/graph.service'
+import { BUILTIN_IDENTIFIERS } from '../../utils/identifiers'
 
 const log = createModuleLogger('entity-service')
-
-const BUILTIN_IDENTIFIERS = new Set([
-  'if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'instanceof', 'in', 'of',
-  'new', 'delete', 'throw', 'await', 'async', 'function', 'class', 'const', 'let', 'var',
-  'console', 'Math', 'Object', 'Array', 'String', 'Number', 'Boolean', 'Promise', 'Error',
-  'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'parseInt', 'parseFloat',
-  'isNaN', 'isFinite', 'JSON', 'Date', 'Map', 'Set', 'WeakMap', 'WeakSet', 'Symbol',
-  'describe', 'it', 'test', 'expect', 'beforeAll', 'afterAll', 'beforeEach', 'afterEach',
-  'require', 'exports', 'module', 'process', 'Buffer', 'global', 'undefined', 'null',
-  'super', 'this', 'void', 'try', 'then', 'catch', 'finally', 'push', 'pop', 'map',
-  'filter', 'reduce', 'find', 'forEach', 'slice', 'splice', 'join', 'split', 'includes',
-  'log', 'error', 'warn', 'info', 'debug',
-])
 
 function extractCalls(body: string): string[] {
   const callPattern = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(/g

@@ -12,6 +12,23 @@ const log = createModuleLogger('socket')
 
 let io: Server
 
+function sessionPayload(session: import('./types').ConflictSession) {
+  return {
+    sessionId:         session.id,
+    entityName:        session.entityName,
+    devAId:            session.devAId,
+    devBId:            session.devBId,
+    devASig:           session.devASig,
+    devBSig:           session.devBSig,
+    devABody:          session.devABody,
+    devBBody:          session.devBBody,
+    blastRadius:       session.blastRadius,
+    securitySensitive: session.securitySensitive,
+    conflictType:      session.conflictType,
+    detectedAt:        session.detectedAt,
+  }
+}
+
 export function getIo(): Server { return io }
 
 export async function handleEntityDiffEvent(
@@ -82,20 +99,7 @@ export async function handleEntityDiffEvent(
         for (const clientId of targets) {
           io.to(`room:${clientId}`).emit('entity:conflict', enriched)
         }
-        io.to('room:dashboard').emit('conflict:session:opened', {
-          sessionId:         session.id,
-          entityName:        session.entityName,
-          devAId:            session.devAId,
-          devBId:            session.devBId,
-          devASig:           session.devASig,
-          devBSig:           session.devBSig,
-          devABody:          session.devABody,
-          devBBody:          session.devBBody,
-          blastRadius:       session.blastRadius,
-          securitySensitive: session.securitySensitive,
-          conflictType:      session.conflictType,
-          detectedAt:        session.detectedAt,
-        })
+        io.to('room:dashboard').emit('conflict:session:opened', sessionPayload(session))
         io.to('room:dashboard').emit('conflict:detected', enriched)
         io.to('room:dashboard').emit('graph:links', [
           { source: devId, target: entity.name, conflict: true },
@@ -207,20 +211,7 @@ async function sendDashboardSnapshot(socket: Socket): Promise<void> {
     /* Replay open conflict sessions */
     const openSessions = await getOpenSessions()
     for (const session of openSessions) {
-      socket.emit('conflict:session:opened', {
-        sessionId:         session.id,
-        entityName:        session.entityName,
-        devAId:            session.devAId,
-        devBId:            session.devBId,
-        devASig:           session.devASig,
-        devBSig:           session.devBSig,
-        devABody:          session.devABody,
-        devBBody:          session.devBBody,
-        blastRadius:       session.blastRadius,
-        securitySensitive: session.securitySensitive,
-        conflictType:      session.conflictType,
-        detectedAt:        session.detectedAt,
-      })
+      socket.emit('conflict:session:opened', sessionPayload(session))
     }
   } catch (err) {
     log.error({ err }, 'failed to send dashboard snapshot')

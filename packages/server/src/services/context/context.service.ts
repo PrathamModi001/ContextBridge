@@ -1,5 +1,6 @@
 import { getRedisClient } from '../../config/redis'
 import { createModuleLogger } from '../../logger/logger'
+import { BUILTIN_IDENTIFIERS } from '../../utils/identifiers'
 
 const log = createModuleLogger('context-service')
 
@@ -31,15 +32,6 @@ export interface ConflictInfo {
 
 /* ─── helpers ─── */
 
-const KEYWORDS = new Set([
-  'if', 'for', 'while', 'switch', 'catch', 'function', 'class',
-  'return', 'new', 'await', 'typeof', 'instanceof', 'void', 'delete',
-  'throw', 'yield', 'async', 'export', 'import', 'const', 'let', 'var',
-  'require', 'console', 'process', 'setTimeout', 'clearTimeout',
-  'setInterval', 'clearInterval', 'Promise', 'Array', 'Object', 'JSON',
-  'Math', 'Date', 'Error', 'Map', 'Set', 'String', 'Number', 'Boolean',
-])
-
 function extractFunctionCalls(code: string): { name: string; args: string[]; argCount: number }[] {
   const seen = new Set<string>()
   const calls: { name: string; args: string[]; argCount: number }[] = []
@@ -47,7 +39,7 @@ function extractFunctionCalls(code: string): { name: string; args: string[]; arg
   let match
   while ((match = regex.exec(code)) !== null) {
     const name = match[1]
-    if (KEYWORDS.has(name) || seen.has(name)) continue
+    if (BUILTIN_IDENTIFIERS.has(name) || seen.has(name)) continue
     seen.add(name)
     const argsStr = match[2].trim()
     const args = argsStr ? argsStr.split(',').map(a => a.trim()).filter(Boolean) : []
