@@ -1,12 +1,14 @@
 {
   "name": "contextbridge",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "jest --config jest.e2e.config.js",
     "demo:seed": "ts-node packages/demo/src/seed.ts",
-    "demo:start": "npm run demo:seed && concurrently -n server,client-a,client-b,dashboard \"npm run dev -w packages/server\" \"npm run dev -w packages/client -- --dev=devA --workspace=./packages/demo/workspace-devA\" \"npm run dev -w packages/client -- --dev=devB --workspace=./packages/demo/workspace-devB\" \"npm run dev -w packages/dashboard\"",
+    "demo:start": "npm run demo:seed && concurrently -n server,client-a,client-b,dashboard \"npm run dev -w packages/server\" \"cross-env CB_DEV_ID=devA CB_WORKSPACE=./packages/demo/workspace-devA npm run dev -w packages/client\" \"cross-env CB_DEV_ID=devB CB_WORKSPACE=./packages/demo/workspace-devB npm run dev -w packages/client\" \"npm run dev -w packages/dashboard\"",
     "demo:infra": "concurrently -n server,dashboard \"npm run dev -w packages/server\" \"npm run dev -w packages/dashboard\"",
     "dev:a": "ts-node packages/agent/src/interactive.ts devA",
     "dev:b": "ts-node packages/agent/src/interactive.ts devB",
@@ -14,6 +16,7 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
+    "cross-env": "^10.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
   }

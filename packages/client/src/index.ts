@@ -13,9 +13,9 @@ function getArg(args: string[], name: string): string | undefined {
 }
 
 const args = process.argv.slice(2)
-const devId = getArg(args, 'dev') ?? `dev-${process.pid}`
-const workspace = getArg(args, 'workspace') ?? process.cwd()
-const serverUrl = getArg(args, 'server') ?? 'http://localhost:3000'
+const devId = getArg(args, 'dev') ?? process.env.CB_DEV_ID ?? `dev-${process.pid}`
+const workspace = getArg(args, 'workspace') ?? process.env.CB_WORKSPACE ?? process.cwd()
+const serverUrl = getArg(args, 'server') ?? process.env.CB_SERVER_URL ?? 'http://localhost:3000'
 
 log.info({ devId, workspace, serverUrl }, 'starting ContextBridge client')
 
