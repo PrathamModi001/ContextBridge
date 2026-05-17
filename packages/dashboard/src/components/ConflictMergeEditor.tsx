@@ -110,6 +110,11 @@ export function ConflictMergeEditor({ session, onClose, onResolved }: Props) {
           resolvedBy: 'dashboard',
         }),
       })
+      if (res.status === 409) {
+        onResolved(session.id)
+        onClose()
+        return
+      }
       if (!res.ok) {
         const data = await res.json() as { error?: string }
         throw new Error(data.error ?? 'Server error')

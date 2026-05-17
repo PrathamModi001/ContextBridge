@@ -33,6 +33,7 @@ export async function createSession(
     blastRadius:       '0',
     securitySensitive: securitySensitive ? '1' : '0',
   })
+  await redis.expire(`conflict:session:${id}`, 7200) // 2h TTL — prevents zombie sessions accumulating
   await redis.hset(`entity:${entityName}:meta`, { conflictSessionId: id })
 
   db.query(
@@ -107,11 +108,16 @@ export async function resolveSession(
     mergedSig,
   })
 
+  const canonicalDevId =
+    resolution.type === 'accepted_a' ? session.devAId :
+    resolution.type === 'accepted_b' ? session.devBId :
+    resolution.resolvedBy
+
   await redis.hdel(`entity:${session.entityName}:meta`, 'conflictSessionId')
   await redis.hset(`entity:${session.entityName}`, {
     signature: mergedSig,
     body:      mergedBody,
-    devId:     resolution.resolvedBy,
+    devId:     canonicalDevId,
     updatedAt: now,
   })
 
@@ -151,5 +157,13 @@ export async function getOpenSessions(): Promise<ConflictSession[]> {
   const results = await Promise.all(
     keys.map(k => getSession(k.replace('conflict:session:', ''))),
   )
-  return results.filter((s): s is ConflictSession => s !== null && s.status !== 'resolved')
+  const open = results.filter((s): s is ConflictSession => s !== null && s.status !== 'resolved')
+
+  // Skip orphaned sessions — entity no longer points to this session
+  const live: ConflictSession[] = []
+  for (const s of open) {
+    const activeId = await redis.hget(`entity:${s.entityName}:meta`, 'conflictSessionId')
+    if (activeId === s.id) live.push(s)
+  }
+  return live
 }

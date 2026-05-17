@@ -4,7 +4,7 @@ import * as path from 'path'
 import { io, type Socket } from 'socket.io-client'
 import Groq from 'groq-sdk'
 import dotenv from 'dotenv'
-import { FINTECH_FILES } from '../../demo/src/fintech-seed'
+import { FINTECH_FILES_A, FINTECH_FILES_B } from '../../demo/src/fintech-seed'
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') })
 
@@ -151,6 +151,7 @@ function seedWorkspace(): void {
   for (const f of fs.readdirSync(WORKSPACE)) {
     if (f.endsWith('.ts')) fs.unlinkSync(path.join(WORKSPACE, f))
   }
+  const FINTECH_FILES = DEV_ID === 'devA' ? FINTECH_FILES_A : FINTECH_FILES_B
   for (const [name, content] of Object.entries(FINTECH_FILES)) {
     fs.writeFileSync(path.join(WORKSPACE, name), content, 'utf8')
   }
@@ -263,11 +264,6 @@ async function main() {
         fs.writeFileSync(filePath, body + '\n', 'utf8')
         console.log()
         console.log(`${tag('✓ RESOLVED', C.green)} ${C.bold}${entityName}${C.reset} — accepted version written to ${file}`)
-        socket.emit('entity:diff', [{
-          name: entityName, kind: 'function',
-          oldSig: '', newSig: entityName, body: body.slice(0, 8000),
-          file, line: 1,
-        }])
       }
     } else {
       console.log()

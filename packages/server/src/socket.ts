@@ -146,11 +146,16 @@ export async function resolveConflictSession(
     resolvedBy:     resolution.resolvedBy,
   })
 
+  const canonicalDevId =
+    resolution.type === 'accepted_a' ? session.devAId :
+    resolution.type === 'accepted_b' ? session.devBId :
+    resolution.resolvedBy
+
   /* Use Redis fields for accurate kind + file in entity:updated */
   const entityKind = await getRedisClient().hget(`entity:${session.entityName}`, 'kind') ?? 'function'
   io.to('room:dashboard').emit('entity:updated', {
     name:      session.entityName,
-    devId:     resolution.resolvedBy,
+    devId:     canonicalDevId,
     signature: acceptedSig,
     kind:      entityKind,
     file:      entityFile,

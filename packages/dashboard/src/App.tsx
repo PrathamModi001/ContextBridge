@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSocket } from './hooks/useSocket'
 import { useGraph } from './hooks/useGraph'
 import { useConflictSessions } from './hooks/useConflictSessions'
@@ -13,9 +13,13 @@ import type { AgentMode, ConflictSession } from './types'
 export function App() {
   const { socket, connected } = useSocket()
   const { nodes, links, conflicts, devStatuses } = useGraph(socket)
-  const { getSessionForEntity, getDamageStats } = useConflictSessions(socket)
+  const { sessions, getSessionForEntity, getDamageStats } = useConflictSessions(socket)
   const [mode, setMode] = useState<AgentMode>('smart')
   const [activeSession, setActiveSession] = useState<ConflictSession | null>(null)
+
+  useEffect(() => {
+    if (activeSession && !sessions.has(activeSession.id)) setActiveSession(null)
+  }, [sessions, activeSession])
 
   const devCount = [...devStatuses.values()].filter(d => d.connected).length
 
