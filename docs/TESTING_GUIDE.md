@@ -1,236 +1,27 @@
-# ContextBridge — Demo & Interview Pitch Guide
+# ContextBridge — Manual Testing Guide
 
 ---
 
-## The Pitch (30 seconds)
+## Prerequisites
 
-> "Modern AI coding agents like Copilot or Cursor each write code in isolation — they don't know what the other agent on your team just changed. ContextBridge is a real-time shared context layer: every agent sees every other agent's live function signatures, ownership locks, and dependency graph. When two agents conflict, we catch it at write-time — not at PR review, not at runtime — and surface a structured merge session. It's the missing coordination layer for multi-agent development."
-
----
-
-## The Problem Without ContextBridge
-
-| Scenario | Without CB | With CB |
-|----------|-----------|---------|
-| devA changes `processPayment(amount)` → `processPayment(amount, currency)` | devB's code still calls it with 1 arg. Breaks at runtime. | devB's agent is told the signature changed *before* it writes. |
-| Two agents edit the same function simultaneously | Last write wins. First agent's work silently overwritten. | Conflict detected in milliseconds. Merge session opened. |
-| Agent calls a function that was deleted yesterday | No error until deploy. | `/validate` endpoint returns conflict + corrected call. |
-| Junior dev's agent calls auth function wrong | No review until PR. Auth bypass in prod. | Security-sensitive entity flagged. `auth_bypass` conflict type raised. |
-| Team has 10 agents, 200 entities | No one knows who owns what. | Live dependency graph. Entity locks. Blast radius on every change. |
-
----
-
-## SMART vs DUMB Mode
-
-Toggle in the **top-right of the dashboard** (SMART / DUMB pills).
-
-| | SMART Mode | DUMB Mode |
-|--|-----------|-----------|
-| **What it means** | Agents have live ContextBridge context injected into every LLM prompt | Agents write blindly — no shared context, no awareness of other agents' code |
-| **Agent behavior** | Sees all live entity signatures, who owns what, what calls what | Writes based on its own workspace only |
-| **Expected outcome** | Fewer conflicts, correct call signatures, respects ownership | More conflicts, stale calls, cascading blast radius |
-| **Dashboard indicator** | SMART pill lit cyan | DUMB pill lit red — "DUMB MODE DAMAGE" counter appears in Dev Panel |
-| **How to demo** | Normal operation | Click DUMB toggle → have both agents edit aggressively → watch damage counter climb |
-
-**The demo arc:** Start SMART, trigger one clean conflict resolution, then switch to DUMB and trigger several — show the DevPanel "DUMB MODE DAMAGE" counter vs zero in SMART. That contrast is the pitch.
-
----
-
-## Interviewer Demo Script (10 min)
-
-### Step 0 — Setup (done before interview)
-```bash
-docker-compose up redis postgres -d
-npm run demo:start        # seeds workspaces, starts server + clients + dashboard
-# in 2 separate terminals:
-npm run dev:a
-npm run dev:b
-```
-Open http://localhost:5174 — graph should show ~10 entity nodes.
-
----
-
-### Step 1 — Show the graph (1 min)
-
-Point at the dashboard:
-- **Nodes** = live TypeScript entities owned by each dev (color-coded)
-- **Edges** = dependency calls (who calls whom)
-- **Dev Panel** (left) = which agents are online, what they own, heartbeat
-- **Conflict Feed** (right) = real-time event log
-
-> *"Every write from an agent updates this graph in real time via Socket.IO. The graph is the shared brain."*
-
----
-
-### Step 2 — Show SMART context (1 min)
-
-In devA terminal:
-```
-ctx
-```
-Shows the live Markdown snapshot all agents get injected into their LLM prompt — signatures, owners, file paths.
-
-> *"Before every LLM call, the agent pulls this snapshot. It knows `processPayment` is owned by devB and has signature `(amount: number, currency: string)`. It won't write a call with wrong args."*
-
----
-
-### Step 3 — Trigger a conflict (2 min)
-
-devA:
-```
-add email validation parameter to processPayment
-```
-Wait for `[CB] entity:diff sent`.
-
-devB immediately:
-```
-add retry logic parameter to processPayment
-```
-
-Both terminals print `[⚡ CONFLICT] processPayment`. Dashboard:
-- Conflict feed entry appears
-- Merge editor opens (3-panel: devA left, merged center, devB right)
-- Diff highlights show exactly which lines differ
-
-> *"Caught in milliseconds — not at PR, not at runtime. And notice the blast radius: N entities downstream will be affected by whichever version wins."*
-
----
-
-### Step 4 — Resolve (1 min)
-
-In dashboard merge editor:
-1. Click **"Use A →"** to load devA's version into center panel
-2. Edit the merged panel if you want to combine both changes
-3. Click **"Accept Merged Version ✓"**
-
-Both REPL terminals print `[✓ RESOLVED]` — accepted code written back to both workspaces automatically.
-
-> *"The accepted version propagates back to both agents' workspaces over Socket.IO. No manual copy-paste. Both agents are immediately in sync."*
-
----
-
-### Step 5 — Show DUMB mode damage (2 min)
-
-Click **DUMB** toggle in top-right. Now:
-
-devA:
-```
-add rate limiting to transfer
-```
-devB:
-```
-add caching to transfer
-```
-
-Don't resolve — let them pile up. Trigger 3-4 more on different entities. Watch:
-- **Conflict feed** fills up
-- **DUMB MODE DAMAGE** counter in Dev Panel climbs
-- Blast radius numbers grow (stale writes cascade)
-
-Switch back to **SMART** and resolve one — counter drops.
-
-> *"This is what a multi-agent codebase looks like without coordination. Every unresolved conflict is a potential runtime bug or security hole."*
-
----
-
-### Step 6 — Show the API layer (1 min)
-
-```bash
-# Who calls processPayment and will break if its signature changes?
-curl http://localhost:3000/v1/entities/processPayment/dependents
-
-# Validate any code snippet against live signatures
-curl -X POST http://localhost:3000/v1/context/validate \
-  -H "Content-Type: application/json" \
-  -d '{"code": "processPayment(amount)"}'
-# returns: conflict + correctedCall if signature mismatch
-```
-
-> *"This REST API is how you'd plug ContextBridge into a CI pipeline — validate generated code before it ever hits a PR."*
-
----
-
-### Step 7 — Reset between demos
-```
-# In any REPL:
-reset    # restores workspace to canonical fintech seed files
-flush    # clears all Redis entity state + dashboard
-```
-
----
-
-## Feature Test Reference
-
-### TEST 1 — Entity Registration
-File change → parser → entity:diff → Redis → dashboard node. Should appear within 2s of agent edit.
-
-### TEST 2 — Live Context Snapshot
-```bash
-curl http://localhost:3000/v1/context/snapshot?format=markdown
-```
-Returns all live entities with signatures, owners, bodies.
-
-### TEST 3 — Conflict Detection
-Two agents edit same function → `[⚡ CONFLICT]` in both terminals + dashboard merge editor opens.
-
-### TEST 4 — Blast Radius
-```bash
-curl http://localhost:3000/v1/entities/processPayment/impact
-# { "impactCount": N }  — N transitive dependents affected
-```
-
-### TEST 5 — Conflict Resolution (3 types)
-| Type | How | Server records |
-|------|-----|----------------|
-| Accept A | Click "Use A →" then submit | `type: accepted_a` |
-| Accept B | Click "← Use B" then submit | `type: accepted_b` |
-| Manual merge | Edit center panel then submit | `type: manual_merge` |
-
-### TEST 6 — Stale Write / Blast Cascade
-Trigger conflict, don't resolve, then have same dev edit the entity again.
-REPL prints `[⚠ STALE WRITE]`. Dashboard blast radius increments.
-
-### TEST 7 — Heartbeat + Disconnect Cleanup
-Kill devA (Ctrl+C). After 30s: devA disappears from dev panel, its entity locks cleared from Redis.
-
-### TEST 8 — Full REST API
-```bash
-curl http://localhost:3000/v1/health
-curl http://localhost:3000/v1/conflicts
-curl http://localhost:3000/v1/conflicts/sessions
-curl http://localhost:3000/v1/entities/loginUser
-curl http://localhost:3000/v1/entities/loginUser/dependents
-curl "http://localhost:3000/v1/audit/entities/loginUser?limit=10"
-curl "http://localhost:3000/v1/audit/devs/devA?limit=10"
-curl "http://localhost:3000/v1/audit/recent?limit=20"
-```
-
-### TEST 9 — Signature Validation
-```bash
-curl -X POST http://localhost:3000/v1/context/validate \
-  -H "Content-Type: application/json" \
-  -d '{"code": "loginUser(email)"}'
-# if loginUser(email, password) → returns conflict + correctedCall
-```
-
-### TEST 10 — Flush + Reset
-```bash
-curl -X POST http://localhost:3000/v1/context/flush   # clear all Redis state
-# or in REPL: flush / reset
-```
-
----
-
-## Setup Reference
-
-### Prerequisites
 - Docker Desktop running
 - Node.js 20+
-- Groq API key → https://console.groq.com
+- A Groq API key → https://console.groq.com
 
-### .env
+---
+
+## 1. First-Time Setup
+
+```bash
+# 1. Copy env file
+cp .env.example .env
 ```
-GROQ_API_KEY=gsk_...
+
+Open `.env` and set:
+```
+GROQ_API_KEY=gsk_...your_key...
+
+# Match docker-compose.yml (uses port 5433, user=contextbridge)
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5433
 POSTGRES_USER=contextbridge
@@ -238,16 +29,334 @@ POSTGRES_PASSWORD=contextbridge
 POSTGRES_DB=contextbridge
 ```
 
-### Start Everything
 ```bash
+# 2. Install dependencies
 npm install
-docker-compose up redis postgres -d
-npm run demo:start          # server + file clients + dashboard (auto-seeds workspaces)
-npm run dev:a               # devA agent REPL (new terminal)
-npm run dev:b               # devB agent REPL (new terminal)
 ```
 
-Dashboard: http://localhost:5174
+---
+
+## 2. Start Infrastructure
+
+```bash
+# Start Redis + Postgres only (no server)
+docker-compose up redis postgres -d
+```
+
+**Verify:**
+```bash
+docker ps
+# should show: redis:7-alpine (0.0.0.0:6379) and postgres:16-alpine (0.0.0.0:5433)
+```
+
+---
+
+## 3. Start Everything
+
+Open **4 terminals**. Run one command per terminal:
+
+```bash
+# Terminal 1 — Server
+npm run dev -w packages/server
+
+# Terminal 2 — Client A (watches workspace-devA/)
+npm run dev -w packages/client -- --dev=devA --workspace=./packages/demo/workspace-devA
+
+# Terminal 3 — Client B (watches workspace-devB/)
+npm run dev -w packages/client -- --dev=devB --workspace=./packages/demo/workspace-devB
+
+# Terminal 4 — Dashboard
+npm run dev -w packages/dashboard
+```
+
+Or use the one-liner (seeds workspaces automatically):
+
+```bash
+npm run demo:start
+```
+
+**Verify server is up:**
+```bash
+curl http://localhost:3000/v1/health
+# expected: {"ok":true}
+```
+
+**Open dashboard:** http://localhost:5174
+
+---
+
+## 4. Start the Agent REPLs
+
+Open 2 more terminals:
+
+```bash
+# Terminal 5
+npm run dev:a       # Interactive agent for devA
+
+# Terminal 6
+npm run dev:b       # Interactive agent for devB
+```
+
+Both will connect to the server and seed their workspaces with fintech TypeScript files if empty.
+
+**Built-in REPL commands (both agents):**
+
+| Command | What it does |
+|---------|-------------|
+| `ls` | List workspace files + entities |
+| `ctx` | Print live context snapshot from server |
+| `reset` | Re-seed workspace to initial state |
+| `flush` | Clear all server state + dashboard |
+| `help` | Show available commands |
+| `quit` | Disconnect and exit |
+
+---
+
+## Feature Tests
+
+---
+
+### TEST 1 — Entity Registration
+
+**What it tests:** File watcher → parser → entity:diff → Redis → dashboard node appears
+
+**Steps:**
+1. Open dashboard (http://localhost:5174)
+2. In devA terminal, type: `ls`  
+   → should list files with entity names
+3. In devA terminal, type any task:
+   ```
+   add a comment to processPayment
+   ```
+4. Watch dashboard → a new node for `processPayment` should appear with devA's color
+
+**Expected:** Graph node appears within 2 seconds of the agent writing the file.
+
+---
+
+### TEST 2 — Live Context Snapshot
+
+**What it tests:** GET /context/snapshot returns Markdown with all live entities
+
+**Steps:**
+1. After at least one agent has made an edit:
+   ```bash
+   curl http://localhost:3000/v1/context/snapshot?format=markdown
+   ```
+2. In devA REPL, type: `ctx`
+
+**Expected:** Both show a Markdown block per entity with signature, file, owner, and body.
+
+---
+
+### TEST 3 — Conflict Detection
+
+**What it tests:** Two devs edit the same entity → conflict event fires → dashboard shows merge editor
+
+**Steps:**
+1. In devA REPL:
+   ```
+   add email validation parameter to processPayment
+   ```
+   Wait for `[CB] entity:diff sent` message.
+
+2. Immediately in devB REPL:
+   ```
+   add retry logic parameter to processPayment
+   ```
+
+**Expected:**
+- Both REPL terminals print `[⚡ CONFLICT] processPayment`
+- Dashboard shows conflict session in the conflict feed
+- Dashboard opens merge editor with devA code on left, devB code on right
+
+---
+
+### TEST 4 — Blast Radius
+
+**What it tests:** BFS traversal counts transitive dependents, severity classification
+
+**Steps:**
+```bash
+curl http://localhost:3000/v1/entities/processPayment/impact
+# expected: { "impactCount": N }  (N > 0 if other entities call it)
+
+curl http://localhost:3000/v1/entities/processPayment/dependents
+# expected: array of entity names that call processPayment
+```
+
+**Also visible in conflict event:** REPL prints `(blast radius: N downstream)` next to severity.
+
+---
+
+### TEST 5 — Conflict Resolution (3 types)
+
+**What it tests:** The full open → resolving → resolved state machine
+
+First trigger a conflict (TEST 3). Then in dashboard:
+
+#### 5a — Accept A
+Click **"Use A →"** to load devA's code into the merged panel, then click **"Accept Merged Version ✓"**.
+- REPL terminals both print `[✓ RESOLVED]`
+- devA's version written to both workspaces
+- Dashboard conflict closes
+
+#### 5b — Accept B
+Trigger a new conflict. Click **"Use B →"**, then **"Accept Merged Version ✓"**.
+- devB's version written to both workspaces
+
+#### 5c — Manual Merge
+Trigger a new conflict. Click **"Use A →"** or **"Use B →"** to load a base, then edit the center panel directly. Click **"Accept Merged Version ✓"**.
+- Custom merged code written to both workspaces
+
+**Verify via API after each:**
+```bash
+curl http://localhost:3000/v1/conflicts/sessions
+# resolved sessions should not appear (status !== 'resolved')
+```
+
+---
+
+### TEST 6 — Stale Write / Blast Cascade
+
+**What it tests:** A 3rd write lands on an entity while a conflict session is already open
+
+**Steps:**
+1. Trigger a conflict on `processPayment` (TEST 3) — don't resolve it yet
+2. In devA REPL immediately:
+   ```
+   add timeout to processPayment
+   ```
+
+**Expected:**
+- REPL prints `[⚠ STALE WRITE] processPayment written against open conflict`
+- `blast radius now: N`
+- Dashboard shows incremented blast radius on the conflict session
+
+---
+
+### TEST 7 — Heartbeat + Disconnect Cleanup
+
+**What it tests:** Entity locks expire when a client disconnects; ghost locks cleared
+
+**Steps:**
+1. Make sure devA has at least one entity lock (after any edit)
+2. Check entity owner:
+   ```bash
+   curl http://localhost:3000/v1/entities/processPayment
+   # devId should be "devA"
+   ```
+3. Kill devA REPL (Ctrl+C)
+4. Wait 35 seconds (heartbeat TTL = 30s)
+5. Check dashboard → devA node should disappear from the dev panel
+6. Check entity:
+   ```bash
+   curl http://localhost:3000/v1/entities/processPayment
+   # should return 404 or empty (entity cleared)
+   ```
+
+---
+
+### TEST 8 — REST API Endpoints
+
+Run all in sequence after some activity:
+
+```bash
+# Health
+curl http://localhost:3000/v1/health
+
+# All recent conflicts (last 100)
+curl http://localhost:3000/v1/conflicts
+
+# Open conflict sessions
+curl http://localhost:3000/v1/conflicts/sessions
+
+# Specific entity state
+curl http://localhost:3000/v1/entities/validateToken
+
+# Who calls validateToken
+curl http://localhost:3000/v1/entities/validateToken/dependents
+
+# Who uses validateToken (by devId)
+curl http://localhost:3000/v1/entities/validateToken/clients
+
+# Audit trail for entity
+curl "http://localhost:3000/v1/audit/entities/validateToken?limit=10"
+
+# Audit trail for dev
+curl "http://localhost:3000/v1/audit/devs/devA?limit=10"
+
+# Recent changes across all devs
+curl "http://localhost:3000/v1/audit/recent?limit=20"
+
+# Context snapshot (LLM-ready)
+curl "http://localhost:3000/v1/context/snapshot?format=markdown"
+
+# Validate generated code against live signatures
+curl -X POST http://localhost:3000/v1/context/validate \
+  -H "Content-Type: application/json" \
+  -d '{"code": "processPayment(amount)"}'
+# expected: conflicts[] if signature mismatch
+```
+
+---
+
+### TEST 9 — Signature Validation
+
+**What it tests:** Agent validates code against live signatures, re-generates if mismatch
+
+**Steps:**
+1. In devA REPL, make any edit so `processPayment` has a known signature
+2. In devB REPL, type:
+   ```
+   write a function that calls processPayment with wrong arguments
+   ```
+3. Watch devB REPL output — should show `N conflict(s) found — re-generating with corrections`
+
+**Or test the endpoint directly:**
+```bash
+curl -X POST http://localhost:3000/v1/context/validate \
+  -H "Content-Type: application/json" \
+  -d '{"code": "validateToken(email, password)"}'
+# if validateToken requires (token: string) → returns conflict with correctedCall
+```
+
+---
+
+### TEST 10 — Flush + Reset
+
+**What it tests:** Clean slate between test runs
+
+```bash
+# Reset all server state (Redis entities, conflict history)
+curl -X POST http://localhost:3000/v1/context/flush
+
+# Or from inside any REPL:
+flush
+```
+
+**In agent REPLs — reset workspace files to initial seed:**
+```
+reset
+```
+
+---
+
+## Quick Smoke Test (< 5 min)
+
+Run these in order after `npm run demo:start`:
+
+```bash
+curl http://localhost:3000/v1/health                    # server up
+# open http://localhost:5174                             # dashboard loads
+npm run dev:a   # in new terminal → connects, seeds, shows workspace
+npm run dev:b   # in new terminal → connects
+# devA> add rate limiting to processPayment
+# devB> add caching to processPayment   (triggers conflict)
+# resolve in dashboard
+curl http://localhost:3000/v1/conflicts                 # conflict logged
+curl http://localhost:3000/v1/audit/recent?limit=5      # changes recorded
+```
 
 ---
 
@@ -255,9 +364,10 @@ Dashboard: http://localhost:5174
 
 | Symptom | Fix |
 |---------|-----|
-| No nodes on dashboard at startup | Restart `demo:start` — file watcher now starts after socket connects |
-| `dev-18016` / random IDs on dashboard | Old client binary running — `demo:start` now uses env vars; restart |
-| `[CB] Cannot reach server` | Server not running. Start Terminal 1 first. |
-| `GROQ_API_KEY` error | Add key to `.env` |
-| Postgres refused | Check `POSTGRES_PORT=5433` (docker maps 5433→5432) |
-| Conflicts not clearing | Run `flush` in REPL |
+| `[CB] Cannot reach server` in REPL | Server not running. Check Terminal 1. |
+| Dashboard blank / no nodes | Clients not running. Check Terminals 2–3. |
+| `GROQ_API_KEY` error | Add key to `.env` file. |
+| Postgres connection refused | Check `POSTGRES_PORT=5433` in `.env` (docker uses 5433, not 5432). |
+| Conflicts not clearing from dashboard | Run `flush` in REPL or `POST /v1/context/flush`. |
+| Entity not appearing in graph | Wait 2s. If still missing: check client terminal for parse errors. |
+| Redis keyspace events not firing | `docker-compose down && docker-compose up redis -d` — compose sets `--notify-keyspace-events Ex`. |

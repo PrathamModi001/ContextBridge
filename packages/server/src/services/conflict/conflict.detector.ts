@@ -39,6 +39,8 @@ export async function detectConflict(
     getImpactCount(entityName),
   ])
 
+  if (oldSig && oldSig === newSig) return null
+
   return {
     entityName,
     severity:    classifySeverity(impactCount),

@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import path from 'path'
+import fs from 'fs'
 import { createWatcher } from './watcher'
 import { createSocketClient, emitEntityDiff } from './socket'
 import { createPipeline } from './pipeline'
@@ -14,9 +15,13 @@ function getArg(args: string[], name: string): string | undefined {
 }
 
 const args = process.argv.slice(2)
-const devId    = getArg(args, 'dev')    ?? process.env.CB_DEV_ID     ?? `dev-${process.pid}`
-const workspace = path.resolve(getArg(args, 'workspace') ?? process.env.CB_WORKSPACE ?? process.cwd())
+const devId     = getArg(args, 'dev')    ?? process.env.CB_DEV_ID     ?? `dev-${process.pid}`
 const serverUrl = getArg(args, 'server') ?? process.env.CB_SERVER_URL ?? 'http://localhost:3000'
+
+// Resolve workspace relative to INIT_CWD (npm invocation dir = monorepo root),
+// not process.cwd() which npm changes to the package dir when using -w.
+const cwdBase   = process.env.INIT_CWD ?? process.cwd()
+const workspace = path.resolve(cwdBase, getArg(args, 'workspace') ?? process.env.CB_WORKSPACE ?? '.')
 
 log.info({ devId, workspace, serverUrl }, 'starting ContextBridge client')
 
@@ -29,6 +34,17 @@ const pipeline = createPipeline(tsParser, (_filePath, diffs) => {
 
 let watcher: Awaited<ReturnType<typeof createWatcher>> | null = null
 
+function rescanWorkspace() {
+  if (!fs.existsSync(workspace)) return
+  const files = fs.readdirSync(workspace).filter(f => f.endsWith('.ts'))
+  for (const f of files) {
+    const fp = path.join(workspace, f)
+    pipeline.clearFile(fp)       // reset cached state so diff treats all entities as new
+    pipeline.processFile(fp)
+  }
+  log.info({ workspace, count: files.length }, 'workspace rescanned')
+}
+
 // Start watcher only after socket connects — Socket.IO drops emits before connect
 socket.on('connect', () => {
   if (watcher) return // already watching (reconnect)
@@ -36,6 +52,12 @@ socket.on('connect', () => {
     pipeline.processFile(filePath)
   })
   log.info({ workspace }, 'watcher started')
+})
+
+// Re-emit all entities after server flush (Redis cleared, chokidar won't re-fire)
+socket.on('workspace:rescan', () => {
+  log.info('workspace:rescan received — re-emitting all entities')
+  rescanWorkspace()
 })
 
 async function shutdown() {

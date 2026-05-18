@@ -67,7 +67,8 @@ export async function flushHandler(_req: Request, res: Response, next: NextFunct
 
     const io = getIo()
     io.to('room:dashboard').emit('conflicts:cleared')
-    io.to('room:dashboard').emit('flush:complete')   // dashboard can reset nodes/devs
+    io.to('room:dashboard').emit('flush:complete')
+    io.emit('workspace:rescan')   // tell all file-watcher clients to re-emit their entities
     res.json({ ok: true })
   } catch (err) {
     next(err)
